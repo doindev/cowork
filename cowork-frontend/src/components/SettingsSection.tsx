@@ -52,7 +52,7 @@ export default function SettingsSection({ conversation }: Props) {
   })
 
   const commitRounds = (value: number) => {
-    const clamped = Math.max(1, Math.floor(value) || 1)
+    const clamped = Math.max(0, Math.floor(value) || 0)
     setRounds(clamped)
     if (clamped !== conversation.maxAgentRounds) {
       patchMutation.mutate({ maxAgentRounds: clamped })
@@ -110,11 +110,11 @@ export default function SettingsSection({ conversation }: Props) {
           </label>
 
           <label className="field">
-            <span className="field-label">Max agent rounds</span>
+            <span className="field-label">Max agent rounds (0 = unlimited)</span>
             <input
               className="num-input"
               type="number"
-              min={1}
+              min={0}
               value={rounds}
               onChange={(e) => setRounds(Number(e.target.value))}
               onBlur={(e) => commitRounds(Number(e.target.value))}

@@ -41,6 +41,7 @@ export interface ConversationView {
   participants: ParticipantView[]
   budgetUsd: number | null
   spentUsd: number
+  paused: boolean
   /** Frontend-only: filled in from phase events / phase switch responses. */
   workspacePath?: string | null
 }
@@ -154,6 +155,7 @@ export interface PatchConversationRequest {
   status?: ConversationStatus
   /** 0 clears the budget. */
   budgetUsd?: number
+  paused?: boolean
 }
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {

@@ -34,19 +34,27 @@ public class PhaseController {
     private final ProjectService projectService;
     private final MessageService messages;
     private final SseHub sseHub;
+    private final dev.cowork.conversation.ParticipantRepository participants;
+    private final dev.cowork.orchestration.ConversationOrchestrator orchestrator;
 
     public PhaseController(ConversationService conversationService, ConversationRepository conversations,
-                           ProjectService projectService, MessageService messages, SseHub sseHub) {
+                           ProjectService projectService, MessageService messages, SseHub sseHub,
+                           dev.cowork.conversation.ParticipantRepository participants,
+                           dev.cowork.orchestration.ConversationOrchestrator orchestrator) {
         this.conversationService = conversationService;
         this.conversations = conversations;
         this.projectService = projectService;
         this.messages = messages;
         this.sseHub = sseHub;
+        this.participants = participants;
+        this.orchestrator = orchestrator;
     }
 
     @PostMapping
     public PhaseView setPhase(@PathVariable UUID id, @RequestBody PhaseRequest request) {
         Conversation conversation = conversationService.get(id);
+        boolean enteringImplementation = request.phase() == Conversation.Phase.IMPLEMENTATION
+                && conversation.getPhase() != Conversation.Phase.IMPLEMENTATION;
         conversation.setPhase(request.phase());
         String workspacePath = null;
         if (request.phase() == Conversation.Phase.IMPLEMENTATION) {
@@ -58,6 +66,33 @@ public class PhaseController {
                 "Phase changed to " + request.phase()
                         + (workspacePath == null ? "" : " — agents now work in " + workspacePath), null);
         sseHub.publish(id, "phase", new PhaseView(request.phase().name(), conversation.getProjectId(), workspacePath));
+        if (enteringImplementation) {
+            kickOffTaskDecomposition(conversation);
+        }
         return new PhaseView(conversation.getPhase().name(), conversation.getProjectId(), workspacePath);
+    }
+
+    /**
+     * On entering IMPLEMENTATION, an architect-type agent decomposes the approved plan
+     * into small tasks, added in the order they must be implemented.
+     */
+    private void kickOffTaskDecomposition(Conversation conversation) {
+        var activeAgents = participants.findByConversationIdAndActiveTrue(conversation.getId()).stream()
+                .filter(p -> p.getKind() == dev.cowork.conversation.Participant.Kind.AGENT)
+                .toList();
+        if (activeAgents.isEmpty()) {
+            return;
+        }
+        var decomposer = activeAgents.stream()
+                .filter(p -> p.getDisplayName().toLowerCase().contains("architect"))
+                .findFirst()
+                .orElse(activeAgents.getFirst());
+        messages.postSystem(conversation.getId(), Message.Kind.SYSTEM,
+                "@" + decomposer.getDisplayName() + " the plan is approved. Decompose the entire approved "
+                        + "implementation plan into small, self-contained tasks using create_task, adding them "
+                        + "in the exact order they need to be implemented (dependencies first). Give each task "
+                        + "a clear title and a description precise enough for any agent to implement. When the "
+                        + "list is complete, raise a TASK_ASSIGNMENT proposal for the first task.", null);
+        orchestrator.triggerTurn(conversation.getId(), decomposer.getId());
     }
 }

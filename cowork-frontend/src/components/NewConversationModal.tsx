@@ -15,7 +15,7 @@ export default function NewConversationModal({ onClose, onCreated }: Props) {
   const [selectedAgents, setSelectedAgents] = useState<string[]>([])
   const [voteMode, setVoteMode] = useState<VoteMode>('MAJORITY')
   const [userVotes, setUserVotes] = useState(true)
-  const [maxRounds, setMaxRounds] = useState(4)
+  const [maxRounds, setMaxRounds] = useState(0)
 
   const createMutation = useMutation({
     mutationFn: createConversation,
@@ -48,7 +48,7 @@ export default function NewConversationModal({ onClose, onCreated }: Props) {
       title: title.trim(),
       voteMode,
       userVotes,
-      maxAgentRounds: Math.max(1, maxRounds),
+      maxAgentRounds: Math.max(0, maxRounds),
       agentIds: selectedAgents,
     })
   }
@@ -147,13 +147,13 @@ export default function NewConversationModal({ onClose, onCreated }: Props) {
               </div>
             </div>
             <div className="field">
-              <span className="field-label">Max agent rounds</span>
+              <span className="field-label">Max agent rounds (0 = unlimited)</span>
               <input
                 className="num-input"
                 type="number"
-                min={1}
+                min={0}
                 value={maxRounds}
-                onChange={(e) => setMaxRounds(Number(e.target.value) || 1)}
+                onChange={(e) => setMaxRounds(Math.max(0, Number(e.target.value) || 0))}
               />
             </div>
           </div>

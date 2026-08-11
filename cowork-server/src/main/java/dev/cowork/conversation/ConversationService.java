@@ -34,7 +34,7 @@ public class ConversationService {
         conversation.setTitle(title);
         conversation.setVoteMode(voteMode == null ? Conversation.VoteMode.MAJORITY : voteMode);
         conversation.setUserVotes(userVotes);
-        if (maxAgentRounds != null && maxAgentRounds > 0) {
+        if (maxAgentRounds != null && maxAgentRounds >= 0) {
             conversation.setMaxAgentRounds(maxAgentRounds);
         }
         conversation.setCreatedAt(Instant.now());
@@ -87,7 +87,8 @@ public class ConversationService {
 
     @Transactional
     public Conversation updateSettings(UUID id, Conversation.VoteMode voteMode, Boolean userVotes,
-                                       Integer maxAgentRounds, Conversation.Status status, Double budgetUsd) {
+                                       Integer maxAgentRounds, Conversation.Status status, Double budgetUsd,
+                                       Boolean paused) {
         Conversation conversation = get(id);
         if (voteMode != null) {
             conversation.setVoteMode(voteMode);
@@ -95,7 +96,7 @@ public class ConversationService {
         if (userVotes != null) {
             conversation.setUserVotes(userVotes);
         }
-        if (maxAgentRounds != null && maxAgentRounds > 0) {
+        if (maxAgentRounds != null && maxAgentRounds >= 0) {
             conversation.setMaxAgentRounds(maxAgentRounds);
         }
         if (status != null) {
@@ -103,6 +104,9 @@ public class ConversationService {
         }
         if (budgetUsd != null) {
             conversation.setBudgetUsd(budgetUsd <= 0 ? null : budgetUsd);
+        }
+        if (paused != null) {
+            conversation.setPaused(paused);
         }
         return conversations.save(conversation);
     }

@@ -30,7 +30,7 @@ public class ConversationController {
     }
 
     public record UpdateRequest(Conversation.VoteMode voteMode, Boolean userVotes, Integer maxAgentRounds,
-                                Conversation.Status status, Double budgetUsd) {
+                                Conversation.Status status, Double budgetUsd, Boolean paused) {
     }
 
     public record PostMessageRequest(@NotBlank String content) {
@@ -45,12 +45,13 @@ public class ConversationController {
 
     public record ConversationView(UUID id, String title, String phase, String voteMode, int maxAgentRounds,
                                    boolean userVotes, UUID projectId, String status, Double budgetUsd,
-                                   double spentUsd, Instant createdAt, List<ParticipantView> participants) {
+                                   double spentUsd, boolean paused, Instant createdAt,
+                                   List<ParticipantView> participants) {
 
         static ConversationView of(Conversation c, List<Participant> participants) {
             return new ConversationView(c.getId(), c.getTitle(), c.getPhase().name(), c.getVoteMode().name(),
                     c.getMaxAgentRounds(), c.isUserVotes(), c.getProjectId(), c.getStatus().name(),
-                    c.getBudgetUsd(), c.getSpentUsd(), c.getCreatedAt(),
+                    c.getBudgetUsd(), c.getSpentUsd(), c.isPaused(), c.getCreatedAt(),
                     participants.stream().map(ParticipantView::of).toList());
         }
     }
@@ -86,8 +87,17 @@ public class ConversationController {
 
     @PatchMapping("/{id}")
     public ConversationView update(@PathVariable UUID id, @RequestBody UpdateRequest request) {
+        boolean pauseChanging = request.paused() != null
+                && request.paused() != service.get(id).isPaused();
         Conversation conversation = service.updateSettings(id, request.voteMode(), request.userVotes(),
-                request.maxAgentRounds(), request.status(), request.budgetUsd());
+                request.maxAgentRounds(), request.status(), request.budgetUsd(), request.paused());
+        if (pauseChanging) {
+            messages.postSystem(id, dev.cowork.message.Message.Kind.SYSTEM,
+                    conversation.isPaused()
+                            ? "Agents paused by the user — messages are recorded but no agent will respond."
+                            : "Agents resumed by the user — mention an agent (or broadcast) to continue.",
+                    null);
+        }
         return ConversationView.of(conversation, service.participantsOf(id));
     }
 

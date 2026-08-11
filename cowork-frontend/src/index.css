@@ -811,6 +811,25 @@ textarea:disabled {
   font-size: 13px;
 }
 
+.pause-btn {
+  color: var(--text-muted);
+}
+
+.pause-btn:hover:not(:disabled) {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+.pause-btn.paused {
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.paused-note {
+  color: var(--amber);
+  font-weight: 600;
+}
+
 .workspace-path {
   font-family: Consolas, 'Cascadia Mono', monospace;
   font-size: 12px;

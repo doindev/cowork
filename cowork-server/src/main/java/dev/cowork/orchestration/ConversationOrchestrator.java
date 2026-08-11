@@ -81,7 +81,8 @@ public class ConversationOrchestrator {
         private void runTurn(TurnJob job) {
             Conversation conversation = conversations.findById(conversationId).orElse(null);
             Participant participant = participants.findById(job.participantId()).orElse(null);
-            if (conversation == null || participant == null || !participant.isActive()) {
+            if (conversation == null || participant == null || !participant.isActive()
+                    || conversation.isPaused()) {
                 return;
             }
             boolean stateless = turnService.isStateless(participant);
@@ -141,6 +142,9 @@ public class ConversationOrchestrator {
             return;
         }
 
+        if (conversation.isPaused()) {
+            return; // Recorded but not routed; delta transcripts deliver it after resume.
+        }
         boolean fromUser = event.senderKind() == Participant.Kind.USER;
         int nextRound = fromUser ? 0 : message.round() + 1;
 
@@ -157,7 +161,7 @@ public class ConversationOrchestrator {
             }
             return;
         }
-        if (!fromUser && nextRound > conversation.getMaxAgentRounds()) {
+        if (!fromUser && conversation.hasRoundLimit() && nextRound > conversation.getMaxAgentRounds()) {
             droppedByBudget.computeIfAbsent(conversation.getId(), k -> new java.util.concurrent.CopyOnWriteArrayList<>())
                     .addAll(recipients.stream().map(p -> new TurnJob(p.getId(), 0)).toList());
             messages.postSystem(conversation.getId(), Message.Kind.SYSTEM,

@@ -21,8 +21,10 @@ public class Conversation implements UuidAssignable {
     private String title;
     private Phase phase = Phase.PLANNING;
     private VoteMode voteMode = VoteMode.MAJORITY;
-    private int maxAgentRounds = 4;
+    /** Agent-to-agent hand-off budget per user message; 0 = unlimited. */
+    private int maxAgentRounds = 0;
     private boolean userVotes = false;
+    private boolean paused = false;
     private UUID projectId;
     private Status status = Status.ACTIVE;
     private Double budgetUsd;
@@ -77,5 +79,13 @@ public class Conversation implements UuidAssignable {
 
     public boolean isBudgetExhausted() {
         return budgetUsd != null && budgetUsd > 0 && spentUsd >= budgetUsd;
+    }
+
+    public boolean isPaused() { return paused; }
+
+    public void setPaused(boolean paused) { this.paused = paused; }
+
+    public boolean hasRoundLimit() {
+        return maxAgentRounds > 0;
     }
 }

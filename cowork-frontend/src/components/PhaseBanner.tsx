@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { switchPhase, type ConversationView } from '../api'
+import { patchConversation, switchPhase, type ConversationView } from '../api'
 import { applyPhaseToCache } from '../hooks/useConversationEvents'
 
 interface Props {
@@ -25,14 +25,43 @@ export default function PhaseBanner({ conversation }: Props) {
     },
   })
 
+  const pauseMutation = useMutation({
+    mutationFn: () => patchConversation(conversation.id, { paused: !conversation.paused }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['conversation', conversation.id], (old: ConversationView | undefined) =>
+        old ? { ...old, paused: updated.paused } : updated,
+      )
+      void queryClient.invalidateQueries({ queryKey: ['conversations'] })
+    },
+  })
+
+  const pauseButton = (
+    <button
+      className={`btn pause-btn${conversation.paused ? ' paused' : ''}`}
+      title={
+        conversation.paused
+          ? 'Resume agents — they will respond to new mentions again'
+          : 'Pause agents — your messages are recorded but no agent will respond'
+      }
+      disabled={pauseMutation.isPending || conversation.status === 'ARCHIVED'}
+      onClick={() => pauseMutation.mutate()}
+    >
+      {pauseMutation.isPending ? '…' : conversation.paused ? '▶ Resume agents' : '⏸ Pause agents'}
+    </button>
+  )
+
   if (conversation.phase === 'PLANNING') {
     return (
       <div className="phase-banner planning">
         <div className="phase-banner-left">
           <span className="badge phase-badge phase-planning">Planning</span>
-          <span className="phase-banner-text">
-            Agents are discussing and refining the plan.
-          </span>
+          {conversation.paused ? (
+            <span className="phase-banner-text paused-note">Agents are paused.</span>
+          ) : (
+            <span className="phase-banner-text">
+              Agents are discussing and refining the plan.
+            </span>
+          )}
         </div>
         <div className="phase-banner-right">
           {phaseMutation.isError && (
@@ -40,6 +69,7 @@ export default function PhaseBanner({ conversation }: Props) {
               {(phaseMutation.error as Error).message || 'Phase switch failed.'}
             </span>
           )}
+          {pauseButton}
           {confirming ? (
             <>
               <span className="phase-banner-text">Switch to implementation now?</span>
@@ -76,9 +106,14 @@ export default function PhaseBanner({ conversation }: Props) {
     <div className="phase-banner implementation">
       <div className="phase-banner-left">
         <span className="badge phase-badge phase-implementation">Implementation</span>
-        <span className="phase-banner-text">Agents are executing the approved plan.</span>
+        {conversation.paused ? (
+          <span className="phase-banner-text paused-note">Agents are paused.</span>
+        ) : (
+          <span className="phase-banner-text">Agents are executing the approved plan.</span>
+        )}
       </div>
       <div className="phase-banner-right">
+        {pauseButton}
         {conversation.workspacePath && (
           <span className="workspace-path" title={conversation.workspacePath}>
             {conversation.workspacePath}
