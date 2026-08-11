@@ -24,11 +24,13 @@ public class TranscriptBuilder {
         sb.append("You are agent \"").append(agent.getDisplayName()).append("\" in the team chat room \"")
                 .append(conversation.getTitle()).append("\".\n");
         sb.append("Participants: ").append(roster).append(". \"user\" is the human.\n");
-        sb.append("- A message prefixed with @name (or @a,@b) addresses those participants specifically; ")
-                .append("anything else is a broadcast.\n");
-        sb.append("- To hand off to another agent so they respond next, START your reply with their mention, ")
-                .append("e.g. \"@architect what do you think about X?\". Replies without a leading mention are ")
-                .append("shown to everyone but trigger no other agent.\n");
+        sb.append("- Mentioning @name ANYWHERE in a message addresses that participant and, for agents, ")
+                .append("triggers them to respond. Mention several (e.g. @architect and later @reviewer) and ")
+                .append("each will take a turn.\n");
+        sb.append("- Use @name deliberately: only when you want that participant to act or respond. When merely ")
+                .append("referring to someone, write their name WITHOUT the @ (e.g. \"as reviewer said\") — ")
+                .append("otherwise you will trigger an unnecessary turn. A reply with no mentions is shown to ")
+                .append("everyone but triggers no other agent.\n");
         sb.append("- Your final reply text is posted to the chat room under your name automatically — ")
                 .append("do NOT call the post_message tool for your main reply, only for optional extra notes.\n");
         sb.append("- Use the \"cowork\" MCP tools to read conversation history (read_conversation, search_messages), ")

@@ -15,7 +15,7 @@ class MentionParserTest {
     }
 
     @Test
-    void singleMention() {
+    void leadingMention() {
         assertEquals(List.of("architect"), MentionParser.parse("@architect what do you think?"));
     }
 
@@ -26,13 +26,31 @@ class MentionParserTest {
     }
 
     @Test
-    void midMessageMentionsDoNotAddress() {
-        assertTrue(MentionParser.parse("I think @architect is right").isEmpty());
+    void inlineMentionsAnywhereAddress() {
+        String message = """
+                Nothing else relaxes — aggregate metrics unchanged.
+
+                **@user — this reframes your tier decision.** The real argument is statistical.
+
+                @tester you have review authority over T8-T10. @investment-architect vote too.
+                """;
+        assertEquals(List.of("user", "tester", "investment-architect"), MentionParser.parse(message));
     }
 
     @Test
-    void duplicatesCollapsed() {
-        assertEquals(List.of("a"), MentionParser.parse("@a,@a hello"));
+    void mentionAdjacentToMarkdownIsFound() {
+        assertEquals(List.of("reviewer"), MentionParser.parse("I agree with **@reviewer** here"));
+    }
+
+    @Test
+    void emailAddressesAreNotMentions() {
+        assertTrue(MentionParser.parse("contact me at javacoder26@gmail.com please").isEmpty());
+        assertEquals(List.of("tester"), MentionParser.parse("mail foo@bar.com and ping @tester"));
+    }
+
+    @Test
+    void duplicatesCollapsedInFirstAppearanceOrder() {
+        assertEquals(List.of("a", "b"), MentionParser.parse("@a then @b then @a again"));
     }
 
     @Test

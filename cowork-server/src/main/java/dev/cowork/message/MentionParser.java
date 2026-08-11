@@ -6,29 +6,26 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Parses the leading recipient list of a message: {@code @name} or {@code @a,@b,@c ...}.
- * Only a prefix run of mentions addresses recipients; an empty result means broadcast.
+ * Collects {@code @name} mentions anywhere in a message, in order of first appearance.
+ * A mention must not be immediately preceded by a word character, so email addresses
+ * ({@code foo@bar.com}) and similar are not treated as mentions. An empty result means
+ * the message is a broadcast.
  */
 public final class MentionParser {
 
-    private static final Pattern PREFIX = Pattern.compile("^\\s*@([A-Za-z0-9_-]+)(\\s*,\\s*@([A-Za-z0-9_-]+))*");
-    private static final Pattern NAME = Pattern.compile("@([A-Za-z0-9_-]+)");
+    private static final Pattern MENTION = Pattern.compile("(?<![A-Za-z0-9_])@([A-Za-z0-9_-]+)");
 
     private MentionParser() {
     }
 
     public static List<String> parse(String content) {
-        if (content == null) {
-            return List.of();
-        }
-        Matcher prefix = PREFIX.matcher(content);
-        if (!prefix.find()) {
+        if (content == null || content.isEmpty()) {
             return List.of();
         }
         List<String> mentions = new ArrayList<>();
-        Matcher names = NAME.matcher(prefix.group());
-        while (names.find()) {
-            String name = names.group(1);
+        Matcher matcher = MENTION.matcher(content);
+        while (matcher.find()) {
+            String name = matcher.group(1);
             if (!mentions.contains(name)) {
                 mentions.add(name);
             }
