@@ -1,0 +1,47 @@
+spring:
+  application:
+    name: cowork
+  servlet:
+    multipart:
+      max-file-size: 25MB
+      max-request-size: 30MB
+  threads:
+    virtual:
+      enabled: true
+  ai:
+    mcp:
+      server:
+        name: cowork
+        version: 0.1.0
+        type: SYNC
+        protocol: STREAMABLE
+        instructions: >-
+          Cowork chat-room toolset. You are an agent participant identified by your bearer token.
+          Use post_message only for extra notes, read_conversation/search_messages for history,
+          create_proposal and cast_vote for team decisions.
+        streamable-http:
+          mcp-endpoint: /mcp
+  datasource:
+    url: jdbc:postgresql://localhost:5432/cowork
+    username: postgres
+    password: postgres
+  flyway:
+    enabled: true
+
+server:
+  port: 8090
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+cowork:
+  agents-dir: ../agents
+  workspaces-dir: ../workspaces
+  cli:
+    max-concurrent: 4
+    turn-timeout-seconds: 300
+  mcp:
+    base-url: http://localhost:8090/mcp

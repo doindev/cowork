@@ -1,0 +1,12 @@
+target/
+node_modules/
+dist/
+workspaces/
+.claude/
+*.log
+.idea/
+.vscode/
+*.iml
+.classpath
+.project
+.settings/
