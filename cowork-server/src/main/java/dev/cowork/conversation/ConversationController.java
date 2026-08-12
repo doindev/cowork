@@ -26,7 +26,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 public class ConversationController {
 
     public record CreateRequest(@NotBlank String title, Conversation.VoteMode voteMode, Boolean userVotes,
-                                Integer maxAgentRounds, List<UUID> agentIds) {
+                                Integer maxAgentRounds, List<UUID> agentIds, String workspacePath) {
     }
 
     public record UpdateRequest(Conversation.VoteMode voteMode, Boolean userVotes, Integer maxAgentRounds,
@@ -59,11 +59,14 @@ public class ConversationController {
     private final ConversationService service;
     private final MessageService messages;
     private final SseHub sseHub;
+    private final dev.cowork.project.ProjectService projectService;
 
-    public ConversationController(ConversationService service, MessageService messages, SseHub sseHub) {
+    public ConversationController(ConversationService service, MessageService messages, SseHub sseHub,
+                                  dev.cowork.project.ProjectService projectService) {
         this.service = service;
         this.messages = messages;
         this.sseHub = sseHub;
+        this.projectService = projectService;
     }
 
     @GetMapping
@@ -75,8 +78,16 @@ public class ConversationController {
 
     @PostMapping
     public ConversationView create(@RequestBody CreateRequest request) {
+        boolean hasWorkspace = request.workspacePath() != null && !request.workspacePath().isBlank();
+        if (hasWorkspace) {
+            // Validate up front so a bad path fails before the conversation exists.
+            dev.cowork.project.ProjectService.validateWorkspaceDir(request.workspacePath());
+        }
         Conversation conversation = service.create(request.title(), request.voteMode(),
                 Boolean.TRUE.equals(request.userVotes()), request.maxAgentRounds(), request.agentIds());
+        if (hasWorkspace) {
+            projectService.createExternalProject(conversation, request.workspacePath());
+        }
         return ConversationView.of(conversation, service.participantsOf(conversation.getId()));
     }
 
@@ -115,6 +126,12 @@ public class ConversationController {
     @org.springframework.web.bind.annotation.ExceptionHandler(IllegalStateException.class)
     @org.springframework.web.bind.annotation.ResponseStatus(org.springframework.http.HttpStatus.CONFLICT)
     public java.util.Map<String, String> conflict(IllegalStateException e) {
+        return java.util.Map.of("message", e.getMessage());
+    }
+
+    @org.springframework.web.bind.annotation.ExceptionHandler(IllegalArgumentException.class)
+    @org.springframework.web.bind.annotation.ResponseStatus(org.springframework.http.HttpStatus.BAD_REQUEST)
+    public java.util.Map<String, String> badRequest(IllegalArgumentException e) {
         return java.util.Map.of("message", e.getMessage());
     }
 

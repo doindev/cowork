@@ -5,9 +5,11 @@ import { applyPhaseToCache } from '../hooks/useConversationEvents'
 
 interface Props {
   conversation: ConversationView
+  filterUser: boolean
+  onToggleFilter: () => void
 }
 
-export default function PhaseBanner({ conversation }: Props) {
+export default function PhaseBanner({ conversation, filterUser, onToggleFilter }: Props) {
   const queryClient = useQueryClient()
   // Inline two-step confirm — a native window.confirm would block browser automation
   // (including the agents' own chrome-devtools verification).
@@ -34,6 +36,16 @@ export default function PhaseBanner({ conversation }: Props) {
       void queryClient.invalidateQueries({ queryKey: ['conversations'] })
     },
   })
+
+  const filterChip = (
+    <button
+      className={`chat-filter-chip${filterUser ? ' on' : ''}`}
+      title="Show only your messages and messages mentioning @user"
+      onClick={onToggleFilter}
+    >
+      @ mine &amp; mentions
+    </button>
+  )
 
   const pauseButton = (
     <button
@@ -64,6 +76,7 @@ export default function PhaseBanner({ conversation }: Props) {
           )}
         </div>
         <div className="phase-banner-right">
+          {filterChip}
           {phaseMutation.isError && (
             <span className="form-error inline">
               {(phaseMutation.error as Error).message || 'Phase switch failed.'}
@@ -113,6 +126,7 @@ export default function PhaseBanner({ conversation }: Props) {
         )}
       </div>
       <div className="phase-banner-right">
+        {filterChip}
         {pauseButton}
         {conversation.workspacePath && (
           <span className="workspace-path" title={conversation.workspacePath}>

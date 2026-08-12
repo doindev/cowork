@@ -1,7 +1,13 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
-import { cancelTurn, type AgentActivity, type MessageView, type ParticipantView } from '../api'
-import type { ActivityEntry } from '../hooks/useConversationEvents'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+  cancelTurn,
+  getMessages,
+  type AgentActivity,
+  type MessageView,
+  type ParticipantView,
+} from '../api'
+import { prependMessagesToCache, type ActivityEntry } from '../hooks/useConversationEvents'
 import { formatCost, formatTime, nameColor } from '../utils'
 
 interface Props {
@@ -12,6 +18,8 @@ interface Props {
   partials: Record<string, string>
   activities: Record<string, ActivityEntry[]>
   participants: ParticipantView[]
+  /** Show only the user's own messages and messages mentioning @user. */
+  filterUser: boolean
 }
 
 const MENTION_PATTERN = /(@[A-Za-z0-9_][A-Za-z0-9_.-]*)/g
@@ -75,6 +83,26 @@ function ActivityDrawer({ activity }: { activity: string }) {
 }
 
 const PIN_THRESHOLD_PX = 48
+/** Max message elements kept in the DOM at once. */
+const MAX_WINDOW = 150
+/** How many messages the window slides by when the user reaches an edge. */
+const WINDOW_STEP = 50
+/** Distance from the top edge that triggers sliding up / fetching older. */
+const TOP_EDGE_PX = 200
+/** Distance from the bottom edge that triggers sliding back down. */
+const BOTTOM_EDGE_PX = 200
+/** Server page size when fetching older history. */
+const OLDER_PAGE = 100
+
+const USER_NAME = 'user'
+const USER_MENTION = /@user\b/i
+
+/** Messages that are the user's own, or that mention @user. */
+function concernsUser(m: MessageView) {
+  return (
+    m.senderName === USER_NAME || m.mentions.includes(USER_NAME) || USER_MENTION.test(m.content)
+  )
+}
 
 export default function ChatViewer({
   conversationId,
@@ -84,10 +112,42 @@ export default function ChatViewer({
   partials,
   activities,
   participants,
+  filterUser,
 }: Props) {
+  const queryClient = useQueryClient()
   const listRef = useRef<HTMLDivElement>(null)
   const pinnedRef = useRef(true)
   const [pinned, setPinned] = useState(true)
+
+  // Window end anchored by message id; null = follow the latest message.
+  const [anchorId, setAnchorId] = useState<string | null>(null)
+  // Older-history fetch state, reset per conversation.
+  const olderRef = useRef({ loading: false, exhausted: false })
+  const [loadingOlder, setLoadingOlder] = useState(false)
+  // When set, restore this message's on-screen position after the next render.
+  const preserveRef = useRef<{ id: string; top: number } | null>(null)
+
+  const shown = useMemo(
+    () => (filterUser ? messages.filter(concernsUser) : messages),
+    [messages, filterUser],
+  )
+
+  let endIndex: number
+  if (anchorId === null) {
+    endIndex = shown.length
+  } else {
+    const i = shown.findIndex((m) => m.id === anchorId)
+    // Anchor gone (cache trimmed / filter changed): stay near the oldest loaded.
+    endIndex = i === -1 ? Math.min(MAX_WINDOW, shown.length) : i + 1
+  }
+  const startIndex = Math.max(0, endIndex - MAX_WINDOW)
+  const windowed = shown.slice(startIndex, endIndex)
+
+  // Mirrors for use inside the scroll handler without stale closures.
+  const stateRef = useRef({ startIndex, endIndex, shown, anchorId })
+  stateRef.current = { startIndex, endIndex, shown, anchorId }
+  const fullListRef = useRef(messages)
+  fullListRef.current = messages
 
   const thinkingAgents = useMemo(
     () =>
@@ -115,47 +175,144 @@ export default function ChatViewer({
     if (el) el.scrollTop = el.scrollHeight
   }
 
-  // Reset to bottom when switching conversations.
+  // Reset scroll, window, and history state when switching conversations.
   useLayoutEffect(() => {
     pinnedRef.current = true
     setPinned(true)
+    setAnchorId(null)
+    olderRef.current = { loading: false, exhausted: false }
+    preserveRef.current = null
     scrollToBottom()
   }, [conversationId])
+
+  // When the filter toggles, re-pin to the latest matching messages.
+  useLayoutEffect(() => {
+    pinnedRef.current = true
+    setPinned(true)
+    setAnchorId(null)
+    scrollToBottom()
+  }, [filterUser])
 
   // Follow new content while pinned to the bottom.
   useEffect(() => {
     if (pinnedRef.current) scrollToBottom()
-  }, [messages.length, thinkingAgents.length, loading, streamSize])
+  }, [messages.length, thinkingAgents.length, loading, streamSize, filterUser])
+
+  // After prepending content above the viewport, keep the previously visible
+  // message where it was so the view doesn't jump.
+  useLayoutEffect(() => {
+    const keep = preserveRef.current
+    if (!keep) return
+    preserveRef.current = null
+    const el = listRef.current
+    if (!el) return
+    const node = el.querySelector<HTMLElement>(`[data-msg-id="${keep.id}"]`)
+    if (node) el.scrollTop += node.getBoundingClientRect().top - keep.top
+  })
+
+  /** Remember the first rendered message's position before the window shifts. */
+  const captureScrollAnchor = () => {
+    const el = listRef.current
+    if (!el) return
+    const first = el.querySelector<HTMLElement>('[data-msg-id]')
+    if (first?.dataset.msgId) {
+      preserveRef.current = { id: first.dataset.msgId, top: first.getBoundingClientRect().top }
+    }
+  }
+
+  const loadOlder = () => {
+    if (olderRef.current.loading || olderRef.current.exhausted) return
+    const oldest = fullListRef.current[0]
+    if (!oldest) return
+    olderRef.current.loading = true
+    setLoadingOlder(true)
+    getMessages(conversationId, OLDER_PAGE, oldest.createdAt)
+      .then((older) => {
+        if (older.length < OLDER_PAGE) olderRef.current.exhausted = true
+        if (older.length > 0) {
+          captureScrollAnchor()
+          prependMessagesToCache(queryClient, conversationId, older)
+          // If following the latest, pin the window so it doesn't swallow the
+          // prepended page all at once.
+          const s = stateRef.current
+          if (s.anchorId === null && s.shown.length > 0) {
+            setAnchorId(s.shown[s.shown.length - 1].id)
+          }
+        }
+      })
+      .catch(() => {
+        /* transient; the user can scroll again to retry */
+      })
+      .finally(() => {
+        olderRef.current.loading = false
+        setLoadingOlder(false)
+      })
+  }
 
   const onScroll = () => {
     const el = listRef.current
     if (!el) return
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < PIN_THRESHOLD_PX
-    pinnedRef.current = atBottom
-    setPinned(atBottom)
+    const fromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    const atBottom = fromBottom < PIN_THRESHOLD_PX
+    const { startIndex: start, endIndex: end, shown: list, anchorId: anchor } = stateRef.current
+
+    pinnedRef.current = atBottom && anchor === null
+    setPinned(pinnedRef.current)
+
+    if (el.scrollTop < TOP_EDGE_PX) {
+      if (start > 0) {
+        // Slide the window up over already-loaded messages.
+        const newEnd = Math.max(MAX_WINDOW, end - WINDOW_STEP)
+        if (newEnd < end) {
+          captureScrollAnchor()
+          setAnchorId(list[newEnd - 1].id)
+        }
+      } else {
+        loadOlder()
+      }
+    } else if (anchor !== null && fromBottom < BOTTOM_EDGE_PX) {
+      // Slide the window back down toward the latest.
+      const newEnd = end + WINDOW_STEP
+      if (newEnd >= list.length) {
+        setAnchorId(null)
+      } else {
+        setAnchorId(list[newEnd - 1].id)
+      }
+    }
   }
 
   const jumpToLatest = () => {
     pinnedRef.current = true
     setPinned(true)
+    setAnchorId(null)
     scrollToBottom()
   }
+
 
   return (
     <div className="chat-viewer">
       <div className="chat-scroll" ref={listRef} onScroll={onScroll}>
         {loading && <div className="chat-note">Loading messages…</div>}
+        {loadingOlder && <div className="chat-note slim">Loading older messages…</div>}
         {!loading && messages.length === 0 && (
           <div className="empty-state">
             <div className="empty-title">No messages yet</div>
             <div className="empty-sub">Say something to kick off the discussion.</div>
           </div>
         )}
+        {!loading && messages.length > 0 && filterUser && shown.length === 0 && (
+          <div className="empty-state">
+            <div className="empty-title">No matching messages</div>
+            <div className="empty-sub">
+              None of the loaded messages are yours or mention @user.
+            </div>
+          </div>
+        )}
 
-        {messages.map((message) => {
+        {windowed.map((message) => {
           if (message.kind === 'CHAT') {
             return (
-              <div className="msg-row" key={message.id}>
+              <div className="msg-row" key={message.id} data-msg-id={message.id}>
                 <span
                   className="avatar-dot"
                   style={{ background: nameColor(message.senderName) }}
@@ -184,7 +341,7 @@ export default function ChatViewer({
 
           if (message.kind === 'PROPOSAL') {
             return (
-              <div className="msg-proposal-card" key={message.id}>
+              <div className="msg-proposal-card" key={message.id} data-msg-id={message.id}>
                 <div className="msg-proposal-head">
                   <span className="badge badge-proposal">Proposal</span>
                   <span className="msg-proposal-by">by {message.senderName}</span>
@@ -199,7 +356,7 @@ export default function ChatViewer({
 
           // SYSTEM / VOTE / PHASE → centered muted line
           return (
-            <div className="msg-system" key={message.id}>
+            <div className="msg-system" key={message.id} data-msg-id={message.id}>
               <span className="msg-system-text">
                 {message.kind !== 'SYSTEM' && (
                   <span className="msg-system-kind">{message.kind.toLowerCase()} · </span>

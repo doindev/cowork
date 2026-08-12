@@ -4,7 +4,7 @@ import { ProposalList } from './ProposalPanel'
 import CommitsSection from './CommitsSection'
 import FilesSection from './FilesSection'
 import SettingsSection from './SettingsSection'
-import TasksSection from './TasksSection'
+import TasksDetailView from './TasksDetailView'
 
 interface Props {
   conversation: ConversationView
@@ -68,7 +68,7 @@ export default function PanelModal({ conversation, onClose }: Props) {
           <div className="panel-modal-content">
             {section === 'proposals' && <ProposalList conversation={conversation} />}
             {section === 'changes' && <CommitsSection conversation={conversation} alwaysOpen />}
-            {section === 'tasks' && <TasksSection conversation={conversation} alwaysOpen />}
+            {section === 'tasks' && <TasksDetailView conversation={conversation} />}
             {section === 'files' && <FilesSection conversationId={conversation.id} alwaysOpen />}
             {section === 'settings' && <SettingsSection conversation={conversation} alwaysOpen />}
           </div>

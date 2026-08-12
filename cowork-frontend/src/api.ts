@@ -146,6 +146,20 @@ export interface CreateConversationRequest {
   userVotes: boolean
   maxAgentRounds: number
   agentIds: string[]
+  /** Optional existing directory to use as the project workspace. */
+  workspacePath?: string
+}
+
+export interface DirEntry {
+  name: string
+  path: string
+}
+
+/** path/parent are null for the filesystem-roots listing. */
+export interface DirListing {
+  path: string | null
+  parent: string | null
+  dirs: DirEntry[]
 }
 
 export interface PatchConversationRequest {
@@ -302,6 +316,11 @@ export function getConversation(id: string): Promise<ConversationView> {
   return http(`/conversations/${id}`)
 }
 
+/** Lists subdirectories server-side; omit path for the filesystem roots. */
+export function browseDirs(path?: string): Promise<DirListing> {
+  return http(`/fs/dirs${path ? `?path=${encodeURIComponent(path)}` : ''}`)
+}
+
 export function createConversation(req: CreateConversationRequest): Promise<ConversationView> {
   return http('/conversations', { method: 'POST', body: JSON.stringify(req) })
 }
@@ -319,8 +338,13 @@ export function addAgentToConversation(conversationId: string, agentId: string):
   return http(`/conversations/${conversationId}/agents/${agentId}`, { method: 'POST' })
 }
 
-export function getMessages(conversationId: string, limit = 100): Promise<MessageView[]> {
-  return http(`/conversations/${conversationId}/messages?limit=${limit}`)
+export function getMessages(
+  conversationId: string,
+  limit = 100,
+  before?: string,
+): Promise<MessageView[]> {
+  const cursor = before ? `&before=${encodeURIComponent(before)}` : ''
+  return http(`/conversations/${conversationId}/messages?limit=${limit}${cursor}`)
 }
 
 export function sendMessage(conversationId: string, content: string): Promise<MessageView> {
@@ -365,6 +389,23 @@ export function getCommitDiff(conversationId: string, hash: string): Promise<str
 
 export function getTasks(conversationId: string): Promise<TaskView[]> {
   return http(`/conversations/${conversationId}/tasks`)
+}
+
+export interface PatchTaskRequest {
+  title?: string
+  description?: string
+}
+
+/** Edits a task's title/description. The server rejects edits once work has started. */
+export function patchTask(
+  conversationId: string,
+  taskId: string,
+  req: PatchTaskRequest,
+): Promise<TaskView> {
+  return http(`/conversations/${conversationId}/tasks/${taskId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(req),
+  })
 }
 
 export function getTurns(conversationId: string): Promise<TurnView[]> {

@@ -63,6 +63,53 @@ public class ProjectService {
         return project;
     }
 
+    /** Validates a user-supplied workspace directory; returns the normalized absolute path. */
+    public static Path validateWorkspaceDir(String rawPath) {
+        if (rawPath == null || rawPath.isBlank()) {
+            throw new IllegalArgumentException("Workspace path is empty");
+        }
+        Path dir;
+        try {
+            dir = Path.of(rawPath.trim()).toAbsolutePath().normalize();
+        } catch (java.nio.file.InvalidPathException e) {
+            throw new IllegalArgumentException("Invalid workspace path: " + rawPath);
+        }
+        if (!Files.isDirectory(dir)) {
+            throw new IllegalArgumentException("Workspace directory does not exist: " + dir);
+        }
+        return dir;
+    }
+
+    /**
+     * Creates the conversation's project in a user-chosen existing directory instead of the
+     * managed workspaces dir. Agents are then instructed to stay inside it.
+     */
+    @Transactional
+    public Project createExternalProject(Conversation conversation, String rawPath) {
+        if (conversation.getProjectId() != null) {
+            throw new IllegalStateException("Conversation already has a project");
+        }
+        Path workspace = validateWorkspaceDir(rawPath);
+        String slug = slugify(workspace.getFileName() == null
+                ? "project" : workspace.getFileName().toString());
+        String name = slug;
+        int suffix = 2;
+        while (projects.findByName(name).isPresent()) {
+            name = slug + "-" + suffix++;
+        }
+        git.ensureRepo(workspace);
+        Project project = new Project();
+        project.setName(name);
+        project.setWorkspacePath(workspace.toString());
+        project.setExternal(true);
+        project.setCreatedAt(Instant.now());
+        project = projects.save(project);
+
+        conversation.setProjectId(project.getId());
+        conversations.save(conversation);
+        return project;
+    }
+
     @Transactional
     public ProjectTask createTask(Project project, String title, String description) {
         ProjectTask task = new ProjectTask();
@@ -76,6 +123,28 @@ public class ProjectService {
 
     public List<ProjectTask> tasksOf(UUID projectId) {
         return tasks.findByProjectIdOrderByOrdinal(projectId);
+    }
+
+    /** Edits a task's title/description. Only allowed before work starts (PROPOSED or APPROVED). */
+    @Transactional
+    public ProjectTask updateTaskContent(UUID taskId, String title, String description) {
+        ProjectTask task = tasks.findById(taskId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown task " + taskId));
+        if (task.getStatus() != ProjectTask.Status.PROPOSED
+                && task.getStatus() != ProjectTask.Status.APPROVED) {
+            throw new IllegalStateException(
+                    "Task has already been started (" + task.getStatus() + ") and can no longer be edited");
+        }
+        if (title != null) {
+            if (title.isBlank()) {
+                throw new IllegalArgumentException("Task title cannot be blank");
+            }
+            task.setTitle(title.trim());
+        }
+        if (description != null) {
+            task.setDescription(description);
+        }
+        return tasks.save(task);
     }
 
     @Transactional

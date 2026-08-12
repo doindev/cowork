@@ -38,6 +38,13 @@ function withoutKey<T>(map: Record<string, T>, key: string): Record<string, T> {
   return next
 }
 
+/**
+ * Cap on cached messages per conversation. The oldest are dropped on append —
+ * they stay reachable through the `before` cursor (ChatViewer re-fetches them
+ * when the user scrolls back up).
+ */
+const MESSAGE_CACHE_MAX = 600
+
 /** Append a message to the cache for a conversation, deduplicating by id. */
 export function appendMessageToCache(
   queryClient: QueryClient,
@@ -47,7 +54,22 @@ export function appendMessageToCache(
   queryClient.setQueryData<MessageView[]>(['messages', conversationId], (old) => {
     const list = old ?? []
     if (list.some((m) => m.id === message.id)) return list
-    return [...list, message]
+    const next = [...list, message]
+    return next.length > MESSAGE_CACHE_MAX ? next.slice(next.length - MESSAGE_CACHE_MAX) : next
+  })
+}
+
+/** Prepend an older page of messages (already sorted ascending), deduplicating by id. */
+export function prependMessagesToCache(
+  queryClient: QueryClient,
+  conversationId: string,
+  older: MessageView[],
+): void {
+  queryClient.setQueryData<MessageView[]>(['messages', conversationId], (old) => {
+    const list = old ?? []
+    const known = new Set(list.map((m) => m.id))
+    const fresh = older.filter((m) => !known.has(m.id))
+    return fresh.length === 0 ? list : [...fresh, ...list]
   })
 }
 

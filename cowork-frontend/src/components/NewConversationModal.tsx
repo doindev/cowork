@@ -1,10 +1,93 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createConversation, getAgents, type ConversationView, type VoteMode } from '../api'
+import {
+  browseDirs,
+  createConversation,
+  getAgents,
+  type ConversationView,
+  type DirListing,
+  type VoteMode,
+} from '../api'
 
 interface Props {
   onClose: () => void
   onCreated: (conversation: ConversationView) => void
+}
+
+/** Inline server-backed directory picker for the optional workspace field. */
+function DirBrowser({
+  initialPath,
+  onPick,
+  onCancel,
+}: {
+  initialPath: string
+  onPick: (path: string) => void
+  onCancel: () => void
+}) {
+  const [listing, setListing] = useState<DirListing | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const navigate = (path?: string) => {
+    setLoading(true)
+    setError(null)
+    browseDirs(path)
+      .then(setListing)
+      .catch((e) => {
+        setError((e as Error).message || 'Could not read directory.')
+        // Fall back to the roots so the user is never stuck.
+        if (path) browseDirs().then(setListing).catch(() => {})
+      })
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    navigate(initialPath.trim() || undefined)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  return (
+    <div className="dir-browser">
+      <div className="dir-browser-head">
+        <span className="dir-browser-path" title={listing?.path ?? ''}>
+          {listing?.path ?? 'Select a drive or folder'}
+        </span>
+      </div>
+      <div className="dir-browser-list">
+        {loading && <div className="side-note">Loading…</div>}
+        {error && <div className="form-error">{error}</div>}
+        {!loading && listing && (
+          <>
+            {listing.path !== null && (
+              <button className="dir-row dir-up" onClick={() => navigate(listing.parent ?? undefined)}>
+                ↰ ..
+              </button>
+            )}
+            {listing.dirs.map((d) => (
+              <button className="dir-row" key={d.path} title={d.path} onClick={() => navigate(d.path)}>
+                🗀 {d.name}
+              </button>
+            ))}
+            {listing.path !== null && listing.dirs.length === 0 && (
+              <div className="side-note">No subfolders.</div>
+            )}
+          </>
+        )}
+      </div>
+      <div className="dir-browser-actions">
+        <button className="btn btn-tiny" onClick={onCancel}>
+          Cancel
+        </button>
+        <button
+          className="btn btn-tiny btn-primary"
+          disabled={!listing?.path}
+          onClick={() => listing?.path && onPick(listing.path)}
+        >
+          Use this folder
+        </button>
+      </div>
+    </div>
+  )
 }
 
 export default function NewConversationModal({ onClose, onCreated }: Props) {
@@ -16,6 +99,8 @@ export default function NewConversationModal({ onClose, onCreated }: Props) {
   const [voteMode, setVoteMode] = useState<VoteMode>('MAJORITY')
   const [userVotes, setUserVotes] = useState(true)
   const [maxRounds, setMaxRounds] = useState(0)
+  const [workspacePath, setWorkspacePath] = useState('')
+  const [browsing, setBrowsing] = useState(false)
 
   const createMutation = useMutation({
     mutationFn: createConversation,
@@ -50,6 +135,7 @@ export default function NewConversationModal({ onClose, onCreated }: Props) {
       userVotes,
       maxAgentRounds: Math.max(0, maxRounds),
       agentIds: selectedAgents,
+      workspacePath: workspacePath.trim() || undefined,
     })
   }
 
@@ -120,6 +206,35 @@ export default function NewConversationModal({ onClose, onCreated }: Props) {
                 </label>
               ))}
             </div>
+          </div>
+
+          <div className="field">
+            <span className="field-label">Project workspace (optional)</span>
+            <div className="workspace-row">
+              <input
+                type="text"
+                value={workspacePath}
+                placeholder="Existing folder the agents should work in"
+                onChange={(e) => setWorkspacePath(e.target.value)}
+              />
+              <button className="btn" onClick={() => setBrowsing((v) => !v)}>
+                {browsing ? 'Close' : 'Browse…'}
+              </button>
+            </div>
+            {browsing && (
+              <DirBrowser
+                initialPath={workspacePath}
+                onPick={(path) => {
+                  setWorkspacePath(path)
+                  setBrowsing(false)
+                }}
+                onCancel={() => setBrowsing(false)}
+              />
+            )}
+            <span className="field-hint">
+              When set, agents work only inside this directory and are instructed not to modify or
+              create anything outside it. Leave empty for a managed workspace.
+            </span>
           </div>
 
           <div className="field-row">

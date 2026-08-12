@@ -95,7 +95,7 @@ public class ConversationOrchestrator {
             List<Participant> roster = participants.findByConversationId(conversationId);
             int roundsRemaining = conversation.getMaxAgentRounds() - job.round();
             String prompt = transcriptBuilder.build(conversation, participant, roster, delta, roundsRemaining,
-                    hasImplementationDocs(conversation));
+                    hasImplementationDocs(conversation), externalWorkspacePath(conversation));
             turnService.execute(conversation, participant, prompt, job.round());
         }
 
@@ -197,6 +197,17 @@ public class ConversationOrchestrator {
         Worker worker = workers.computeIfAbsent(conversationId, Worker::new);
         dropped.forEach(worker::enqueue);
         return dropped.size();
+    }
+
+    /** The workspace path for user-chosen (external) project directories, else null. */
+    private String externalWorkspacePath(Conversation conversation) {
+        if (conversation.getProjectId() == null) {
+            return null;
+        }
+        return projectRepository.findById(conversation.getProjectId())
+                .filter(dev.cowork.project.Project::isExternal)
+                .map(dev.cowork.project.Project::getWorkspacePath)
+                .orElse(null);
     }
 
     private boolean hasImplementationDocs(Conversation conversation) {

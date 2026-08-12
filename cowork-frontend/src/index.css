@@ -243,6 +243,177 @@ textarea:disabled {
   overflow: visible;
 }
 
+/* ---------- Workspace directory picker (new conversation) ---------- */
+
+.workspace-row {
+  display: flex;
+  gap: 8px;
+}
+
+.workspace-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.dir-browser {
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  display: flex;
+  flex-direction: column;
+}
+
+.dir-browser-head {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dir-browser-list {
+  max-height: 180px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+}
+
+.dir-row {
+  text-align: left;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dir-row:hover {
+  background: var(--bg-hover);
+}
+
+.dir-up {
+  color: var(--text-muted);
+}
+
+.dir-browser-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 7px 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* ---------- Tasks master-detail (inside panel modal) ---------- */
+
+.tasks-detail-view {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  gap: 16px;
+  height: 100%;
+  min-height: 0;
+}
+
+.tasks-detail-list {
+  overflow-y: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 12px;
+  border-right: 1px solid var(--border-subtle);
+}
+
+.task-row-btn {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.task-row-btn:hover {
+  background: var(--bg-hover);
+}
+
+.task-row-btn.selected {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
+.tasks-detail-pane {
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.task-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 900px;
+}
+
+.task-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.task-detail-meta {
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.task-detail-note {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.task-detail-desc {
+  min-height: 260px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.task-detail-actions {
+  justify-content: flex-start;
+}
+
+.task-status-badge {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.task-status-badge.task-status-approved {
+  color: var(--purple);
+  border-color: var(--purple);
+}
+
+.task-status-badge.task-status-in_progress {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.task-status-badge.task-status-in_review {
+  color: var(--amber);
+  border-color: var(--amber);
+}
+
+.task-status-badge.task-status-done {
+  color: var(--green);
+  border-color: var(--green);
+}
+
 /* ---------- Brand ---------- */
 
 .brand {
@@ -1091,6 +1262,36 @@ textarea:disabled {
   color: var(--text-muted);
   text-align: center;
   padding: 20px;
+}
+
+.chat-note.slim {
+  padding: 6px;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+/* Chat filter toggle; lives in the phase banner's control row. */
+.chat-filter-chip {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+
+.chat-filter-chip:hover {
+  color: var(--text);
+  border-color: var(--text-faint);
+  background: var(--bg-hover);
+}
+
+.chat-filter-chip.on {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .msg-row {

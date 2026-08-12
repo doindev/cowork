@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { continueRounds, getConversation, getConversations, getMessages } from './api'
 import { useConversationEvents } from './hooks/useConversationEvents'
@@ -36,6 +36,12 @@ export default function App() {
   })
   const [draggingDivider, setDraggingDivider] = useState(false)
   const [showPanelModal, setShowPanelModal] = useState(false)
+  const [chatFilterUser, setChatFilterUser] = useState(false)
+
+  // The chat filter is per-conversation view state; reset it on switch.
+  useEffect(() => {
+    setChatFilterUser(false)
+  }, [selectedId])
 
   const toggleSidebar = () =>
     setSidebarCollapsed((v) => {
@@ -84,10 +90,14 @@ export default function App() {
     enabled: selectedId !== null,
   })
 
+  // Live updates arrive over SSE (with an explicit invalidate on reconnect), so
+  // never treat this as stale: a focus/remount refetch would reset the cache to
+  // the latest page and throw away older history loaded by scrolling up.
   const messagesQuery = useQuery({
     queryKey: ['messages', selectedId],
     queryFn: () => getMessages(selectedId!),
     enabled: selectedId !== null,
+    staleTime: Infinity,
   })
 
   const { agentStatuses, partials, activities, roundLimit, clearRoundLimit } =
@@ -228,7 +238,11 @@ export default function App() {
                 {budget != null && ` / ${formatUsd2(budget)}`}
               </span>
             </div>
-            <PhaseBanner conversation={conversation} />
+            <PhaseBanner
+              conversation={conversation}
+              filterUser={chatFilterUser}
+              onToggleFilter={() => setChatFilterUser((v) => !v)}
+            />
             {roundLimit !== null && (
               <div className="round-limit-banner">
                 <span className="round-limit-text">
@@ -257,6 +271,7 @@ export default function App() {
               partials={partials}
               activities={activities}
               participants={conversation.participants}
+              filterUser={chatFilterUser}
             />
             <MessageInput
               conversationId={conversation.id}

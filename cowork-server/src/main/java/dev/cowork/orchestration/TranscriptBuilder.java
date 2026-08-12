@@ -13,7 +13,8 @@ import org.springframework.stereotype.Component;
 public class TranscriptBuilder {
 
     public String build(Conversation conversation, Participant agent, List<Participant> allParticipants,
-                        List<Message> newMessages, int roundsRemaining, boolean hasImplementationDocs) {
+                        List<Message> newMessages, int roundsRemaining, boolean hasImplementationDocs,
+                        String externalWorkspacePath) {
         String roster = allParticipants.stream()
                 .filter(Participant::isActive)
                 .map(Participant::getDisplayName)
@@ -64,6 +65,13 @@ public class TranscriptBuilder {
             sb.append("- There is no agent-to-agent round limit: keep handing off (by mentioning the next ")
                     .append("agent) until the current goal is reached; return control to the user when you ")
                     .append("genuinely need their input or the goal is done.\n");
+        }
+        if (externalWorkspacePath != null) {
+            sb.append("- PROJECT WORKSPACE: ").append(externalWorkspacePath)
+                    .append(" — this user-provided directory is your working directory and the ONLY ")
+                    .append("place you may work. Do NOT modify, create, or delete any file or directory ")
+                    .append("outside it (no writes to the home directory, temp dirs, system locations, or ")
+                    .append("any other path). Reading elsewhere is allowed only when the user asks for it.\n");
         }
         if (hasImplementationDocs) {
             sb.append("- The user uploaded reference files (specs, mockups, screenshots) to the ")
