@@ -317,16 +317,20 @@ export default function App() {
             >
               ⤢
             </button>
-            <button className="icon-btn" title="Collapse panel" onClick={toggleRightPanel}>
-              »
-            </button>
           </div>
           {conversation !== null ? (
-            <ProposalPanel conversation={conversation} />
+            <ProposalPanel conversation={conversation} onHeaderClick={toggleRightPanel} />
           ) : (
             <div className="panel-placeholder">
+              <div
+                className="panel-header clickable"
+                title="Collapse panel"
+                role="button"
+                onClick={toggleRightPanel}
+              >
+                <h3>Proposals</h3>
+              </div>
               <div className="empty-state small">
-                <div className="empty-title">Proposals</div>
                 <div className="empty-sub">Open a conversation to see its proposals.</div>
               </div>
             </div>

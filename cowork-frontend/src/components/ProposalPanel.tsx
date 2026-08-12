@@ -17,6 +17,8 @@ import TasksSection from './TasksSection'
 
 interface Props {
   conversation: ConversationView
+  /** When set, clicking the panel header collapses the panel. */
+  onHeaderClick?: () => void
 }
 
 const TYPE_LABELS: Record<ProposalView['type'], string> = {
@@ -236,12 +238,17 @@ export function useProposalCount(conversationId: string) {
   return proposalsQuery.data?.length ?? 0
 }
 
-export default function ProposalPanel({ conversation }: Props) {
+export default function ProposalPanel({ conversation, onHeaderClick }: Props) {
   const count = useProposalCount(conversation.id)
 
   return (
     <div className="proposal-panel">
-      <div className="panel-header">
+      <div
+        className={`panel-header${onHeaderClick ? ' clickable' : ''}`}
+        title={onHeaderClick ? 'Collapse panel' : undefined}
+        role={onHeaderClick ? 'button' : undefined}
+        onClick={onHeaderClick}
+      >
         <h3>Proposals</h3>
         {count > 0 && <span className="panel-count">{count}</span>}
       </div>
