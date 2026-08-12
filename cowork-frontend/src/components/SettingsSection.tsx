@@ -12,11 +12,12 @@ import { formatUsd2, nameColor } from '../utils'
 
 interface Props {
   conversation: ConversationView
+  alwaysOpen?: boolean
 }
 
-export default function SettingsSection({ conversation }: Props) {
+export default function SettingsSection({ conversation, alwaysOpen = false }: Props) {
   const queryClient = useQueryClient()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(alwaysOpen)
   const [confirmingArchive, setConfirmingArchive] = useState(false)
   const [rounds, setRounds] = useState(conversation.maxAgentRounds)
   const [budget, setBudget] = useState(
@@ -78,10 +79,12 @@ export default function SettingsSection({ conversation }: Props) {
 
   return (
     <div className="settings-section">
-      <button className="settings-toggle" onClick={() => setOpen((o) => !o)}>
-        <span className={`chevron${open ? ' open' : ''}`}>▸</span>
-        Conversation settings
-      </button>
+      {!alwaysOpen && (
+        <button className="settings-toggle" onClick={() => setOpen((o) => !o)}>
+          <span className={`chevron${open ? ' open' : ''}`}>▸</span>
+          Conversation settings
+        </button>
+      )}
 
       {open && (
         <div className="settings-body">

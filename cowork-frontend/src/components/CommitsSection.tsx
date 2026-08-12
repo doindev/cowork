@@ -6,10 +6,11 @@ import DiffModal from './DiffModal'
 
 interface Props {
   conversation: ConversationView
+  alwaysOpen?: boolean
 }
 
-export default function CommitsSection({ conversation }: Props) {
-  const [open, setOpen] = useState(false)
+export default function CommitsSection({ conversation, alwaysOpen = false }: Props) {
+  const [open, setOpen] = useState(alwaysOpen)
   const [diffHash, setDiffHash] = useState<string | null>(null)
 
   const commitsQuery = useQuery({
@@ -22,11 +23,13 @@ export default function CommitsSection({ conversation }: Props) {
 
   return (
     <div className="panel-section">
-      <button className="settings-toggle" onClick={() => setOpen((o) => !o)}>
-        <span className={`chevron${open ? ' open' : ''}`}>▸</span>
-        Changes
-        {commits.length > 0 && <span className="panel-count">{commits.length}</span>}
-      </button>
+      {!alwaysOpen && (
+        <button className="settings-toggle" onClick={() => setOpen((o) => !o)}>
+          <span className={`chevron${open ? ' open' : ''}`}>▸</span>
+          Changes
+          {commits.length > 0 && <span className="panel-count">{commits.length}</span>}
+        </button>
+      )}
 
       {open && (
         <div className="panel-section-body">

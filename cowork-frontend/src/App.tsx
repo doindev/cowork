@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { continueRounds, getConversation, getConversations, getMessages } from './api'
 import { useConversationEvents } from './hooks/useConversationEvents'
@@ -9,13 +9,69 @@ import NewConversationModal from './components/NewConversationModal'
 import PhaseBanner from './components/PhaseBanner'
 import ChatViewer from './components/ChatViewer'
 import MessageInput from './components/MessageInput'
+import PanelModal from './components/PanelModal'
 import ProposalPanel from './components/ProposalPanel'
+
+const PANEL_MIN_WIDTH = 240
+const PANEL_MAX_WIDTH = 640
+
+function clampPanelWidth(w: number) {
+  return Math.min(PANEL_MAX_WIDTH, Math.max(PANEL_MIN_WIDTH, Math.round(w)))
+}
 
 export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showNewModal, setShowNewModal] = useState(false)
   const [showAgentManager, setShowAgentManager] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => localStorage.getItem('cowork.sidebarCollapsed') === '1',
+  )
+  const [rightCollapsed, setRightCollapsed] = useState(
+    () => localStorage.getItem('cowork.rightPanelCollapsed') === '1',
+  )
+  const [rightWidth, setRightWidth] = useState(() => {
+    const stored = Number(localStorage.getItem('cowork.rightPanelWidth'))
+    return clampPanelWidth(Number.isFinite(stored) && stored > 0 ? stored : 340)
+  })
+  const [draggingDivider, setDraggingDivider] = useState(false)
+  const [showPanelModal, setShowPanelModal] = useState(false)
+
+  const toggleSidebar = () =>
+    setSidebarCollapsed((v) => {
+      const next = !v
+      localStorage.setItem('cowork.sidebarCollapsed', next ? '1' : '0')
+      return next
+    })
+
+  const toggleRightPanel = () =>
+    setRightCollapsed((v) => {
+      const next = !v
+      localStorage.setItem('cowork.rightPanelCollapsed', next ? '1' : '0')
+      return next
+    })
+
+  const startDividerDrag = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault()
+      const startX = e.clientX
+      const startWidth = rightWidth
+      setDraggingDivider(true)
+      const widthAt = (clientX: number) => clampPanelWidth(startWidth + (startX - clientX))
+      const onMove = (ev: MouseEvent) => setRightWidth(widthAt(ev.clientX))
+      const onUp = (ev: MouseEvent) => {
+        window.removeEventListener('mousemove', onMove)
+        window.removeEventListener('mouseup', onUp)
+        setDraggingDivider(false)
+        const final = widthAt(ev.clientX)
+        setRightWidth(final)
+        localStorage.setItem('cowork.rightPanelWidth', String(final))
+      }
+      window.addEventListener('mousemove', onMove)
+      window.addEventListener('mouseup', onUp)
+    },
+    [rightWidth],
+  )
 
   const conversationsQuery = useQuery({
     queryKey: ['conversations', showArchived ? 'ARCHIVED' : 'ACTIVE'],
@@ -49,28 +105,81 @@ export default function App() {
   const overBudget = budget != null && spent >= budget
 
   return (
-    <div className="app">
+    <div
+      className={`app${sidebarCollapsed ? ' sidebar-collapsed' : ''}${draggingDivider ? ' dragging' : ''}`}
+      style={{
+        gridTemplateColumns: `${sidebarCollapsed ? '56px' : '280px'} minmax(0, 1fr)${
+          rightCollapsed ? ' 48px' : ` 6px ${rightWidth}px`
+        }`,
+      }}
+    >
       <aside className="sidebar">
-        <div className="brand">
-          <span className="brand-mark" />
-          <span className="brand-name">cowork</span>
-        </div>
-        <ConversationList
-          conversations={conversationsQuery.data ?? []}
-          selectedId={selectedId}
-          loading={conversationsQuery.isLoading}
-          error={conversationsQuery.isError}
-          showArchived={showArchived}
-          onToggleArchived={() => setShowArchived((v) => !v)}
-          onSelect={setSelectedId}
-          onNewConversation={() => setShowNewModal(true)}
-          onArchived={(id) => {
-            if (selectedId === id) setSelectedId(null)
-          }}
-        />
-        <button className="btn sidebar-footer-btn" onClick={() => setShowAgentManager(true)}>
-          ⚙ Manage agents
-        </button>
+        {sidebarCollapsed ? (
+          <>
+            <div className="brand brand-mini" title="cowork">
+              <span className="brand-mark" />
+            </div>
+            <button className="rail-btn" title="Expand sidebar" onClick={toggleSidebar}>
+              »
+            </button>
+            <button
+              className="rail-btn rail-new"
+              title="New conversation"
+              onClick={() => setShowNewModal(true)}
+            >
+              +
+            </button>
+            <div className="rail-conv-list">
+              {(conversationsQuery.data ?? []).map((c) => (
+                <button
+                  key={c.id}
+                  className={`rail-conv${c.id === selectedId ? ' selected' : ''}`}
+                  title={c.title || 'Untitled'}
+                  onClick={() => setSelectedId(c.id)}
+                >
+                  {(c.title || 'U').trim().charAt(0).toUpperCase() || 'U'}
+                </button>
+              ))}
+            </div>
+            <button
+              className="rail-btn rail-footer"
+              title="Manage agents"
+              onClick={() => setShowAgentManager(true)}
+            >
+              ⚙
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="brand">
+              <span className="brand-mark" />
+              <span className="brand-name">cowork</span>
+              <button
+                className="icon-btn brand-collapse"
+                title="Collapse sidebar"
+                onClick={toggleSidebar}
+              >
+                «
+              </button>
+            </div>
+            <ConversationList
+              conversations={conversationsQuery.data ?? []}
+              selectedId={selectedId}
+              loading={conversationsQuery.isLoading}
+              error={conversationsQuery.isError}
+              showArchived={showArchived}
+              onToggleArchived={() => setShowArchived((v) => !v)}
+              onSelect={setSelectedId}
+              onNewConversation={() => setShowNewModal(true)}
+              onArchived={(id) => {
+                if (selectedId === id) setSelectedId(null)
+              }}
+            />
+            <button className="btn sidebar-footer-btn" onClick={() => setShowAgentManager(true)}>
+              ⚙ Manage agents
+            </button>
+          </>
+        )}
       </aside>
 
       <main className="main">
@@ -159,18 +268,55 @@ export default function App() {
         )}
       </main>
 
-      <aside className="right-panel">
-        {conversation !== null ? (
-          <ProposalPanel conversation={conversation} />
-        ) : (
-          <div className="panel-placeholder">
-            <div className="empty-state small">
-              <div className="empty-title">Proposals</div>
-              <div className="empty-sub">Open a conversation to see its proposals.</div>
-            </div>
+      {!rightCollapsed && (
+        <div
+          className="panel-divider"
+          title="Drag to resize"
+          onMouseDown={startDividerDrag}
+        />
+      )}
+
+      {rightCollapsed ? (
+        <aside className="right-panel right-rail">
+          <button className="rail-btn" title="Expand panel" onClick={toggleRightPanel}>
+            «
+          </button>
+          <button
+            className="rail-btn"
+            title="Open proposals, tasks & files"
+            disabled={conversation === null}
+            onClick={() => setShowPanelModal(true)}
+          >
+            🗳
+          </button>
+        </aside>
+      ) : (
+        <aside className="right-panel">
+          <div className="right-panel-controls">
+            <button
+              className="icon-btn"
+              title="Open as full-screen view"
+              disabled={conversation === null}
+              onClick={() => setShowPanelModal(true)}
+            >
+              ⤢
+            </button>
+            <button className="icon-btn" title="Collapse panel" onClick={toggleRightPanel}>
+              »
+            </button>
           </div>
-        )}
-      </aside>
+          {conversation !== null ? (
+            <ProposalPanel conversation={conversation} />
+          ) : (
+            <div className="panel-placeholder">
+              <div className="empty-state small">
+                <div className="empty-title">Proposals</div>
+                <div className="empty-sub">Open a conversation to see its proposals.</div>
+              </div>
+            </div>
+          )}
+        </aside>
+      )}
 
       {showNewModal && (
         <NewConversationModal
@@ -183,6 +329,10 @@ export default function App() {
       )}
 
       {showAgentManager && <AgentManagerModal onClose={() => setShowAgentManager(false)} />}
+
+      {showPanelModal && conversation !== null && (
+        <PanelModal conversation={conversation} onClose={() => setShowPanelModal(false)} />
+      )}
     </div>
   )
 }

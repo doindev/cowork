@@ -5,6 +5,7 @@ import { nameColor } from '../utils'
 
 interface Props {
   conversation: ConversationView
+  alwaysOpen?: boolean
 }
 
 const STATUS_ORDER: TaskStatus[] = ['PROPOSED', 'APPROVED', 'IN_PROGRESS', 'IN_REVIEW', 'DONE']
@@ -17,8 +18,8 @@ const STATUS_LABELS: Record<TaskStatus, string> = {
   DONE: 'Done',
 }
 
-export default function TasksSection({ conversation }: Props) {
-  const [open, setOpen] = useState(false)
+export default function TasksSection({ conversation, alwaysOpen = false }: Props) {
+  const [open, setOpen] = useState(alwaysOpen)
 
   const tasksQuery = useQuery({
     queryKey: ['tasks', conversation.id],
@@ -36,11 +37,13 @@ export default function TasksSection({ conversation }: Props) {
 
   return (
     <div className="panel-section">
-      <button className="settings-toggle" onClick={() => setOpen((o) => !o)}>
-        <span className={`chevron${open ? ' open' : ''}`}>▸</span>
-        Tasks
-        {tasks.length > 0 && <span className="panel-count">{tasks.length}</span>}
-      </button>
+      {!alwaysOpen && (
+        <button className="settings-toggle" onClick={() => setOpen((o) => !o)}>
+          <span className={`chevron${open ? ' open' : ''}`}>▸</span>
+          Tasks
+          {tasks.length > 0 && <span className="panel-count">{tasks.length}</span>}
+        </button>
+      )}
 
       {open && (
         <div className="panel-section-body">

@@ -198,7 +198,7 @@ function ProposalCard({
   )
 }
 
-export default function ProposalPanel({ conversation }: Props) {
+export function ProposalList({ conversation }: Props) {
   const proposalsQuery = useQuery({
     queryKey: ['proposals', conversation.id],
     queryFn: () => getProposals(conversation.id),
@@ -212,25 +212,41 @@ export default function ProposalPanel({ conversation }: Props) {
   }, [proposalsQuery.data])
 
   return (
+    <div className="proposal-list">
+      {proposalsQuery.isLoading && <div className="side-note">Loading proposals…</div>}
+      {proposalsQuery.isError && <div className="side-note">Could not load proposals.</div>}
+      {!proposalsQuery.isLoading && !proposalsQuery.isError && proposals.length === 0 && (
+        <div className="empty-state small">
+          <div className="empty-title">No proposals yet</div>
+          <div className="empty-sub">Agents will raise proposals here as they plan.</div>
+        </div>
+      )}
+      {proposals.map((p) => (
+        <ProposalCard key={p.id} proposal={p} conversation={conversation} />
+      ))}
+    </div>
+  )
+}
+
+export function useProposalCount(conversationId: string) {
+  const proposalsQuery = useQuery({
+    queryKey: ['proposals', conversationId],
+    queryFn: () => getProposals(conversationId),
+  })
+  return proposalsQuery.data?.length ?? 0
+}
+
+export default function ProposalPanel({ conversation }: Props) {
+  const count = useProposalCount(conversation.id)
+
+  return (
     <div className="proposal-panel">
       <div className="panel-header">
         <h3>Proposals</h3>
-        {proposals.length > 0 && <span className="panel-count">{proposals.length}</span>}
+        {count > 0 && <span className="panel-count">{count}</span>}
       </div>
 
-      <div className="proposal-list">
-        {proposalsQuery.isLoading && <div className="side-note">Loading proposals…</div>}
-        {proposalsQuery.isError && <div className="side-note">Could not load proposals.</div>}
-        {!proposalsQuery.isLoading && !proposalsQuery.isError && proposals.length === 0 && (
-          <div className="empty-state small">
-            <div className="empty-title">No proposals yet</div>
-            <div className="empty-sub">Agents will raise proposals here as they plan.</div>
-          </div>
-        )}
-        {proposals.map((p) => (
-          <ProposalCard key={p.id} proposal={p} conversation={conversation} />
-        ))}
-      </div>
+      <ProposalList conversation={conversation} />
 
       <div className="panel-sections">
         <CommitsSection conversation={conversation} />

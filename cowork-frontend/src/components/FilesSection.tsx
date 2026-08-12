@@ -5,6 +5,7 @@ import { formatRelative } from '../utils'
 
 interface Props {
   conversationId: string
+  alwaysOpen?: boolean
 }
 
 function formatSize(bytes: number): string {
@@ -14,9 +15,9 @@ function formatSize(bytes: number): string {
 }
 
 /** User-uploaded reference files stored in the workspace's implementation_docs/. */
-export default function FilesSection({ conversationId }: Props) {
+export default function FilesSection({ conversationId, alwaysOpen = false }: Props) {
   const queryClient = useQueryClient()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(alwaysOpen)
   const [error, setError] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
 
@@ -50,11 +51,13 @@ export default function FilesSection({ conversationId }: Props) {
 
   return (
     <div className="panel-section">
-      <button className="settings-toggle" onClick={() => setOpen((o) => !o)}>
-        <span className={`chevron${open ? ' open' : ''}`}>▸</span>
-        Files
-        {docs.length > 0 && <span className="badge badge-muted">{docs.length}</span>}
-      </button>
+      {!alwaysOpen && (
+        <button className="settings-toggle" onClick={() => setOpen((o) => !o)}>
+          <span className={`chevron${open ? ' open' : ''}`}>▸</span>
+          Files
+          {docs.length > 0 && <span className="badge badge-muted">{docs.length}</span>}
+        </button>
+      )}
 
       {open && (
         <div className="files-body">
