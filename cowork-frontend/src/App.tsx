@@ -126,12 +126,14 @@ export default function App() {
       <aside className="sidebar">
         {sidebarCollapsed ? (
           <>
-            <div className="brand brand-mini" title="cowork">
+            <div
+              className="brand brand-mini"
+              title="Expand sidebar"
+              role="button"
+              onClick={toggleSidebar}
+            >
               <span className="brand-mark" />
             </div>
-            <button className="rail-btn" title="Expand sidebar" onClick={toggleSidebar}>
-              »
-            </button>
             <button
               className="rail-btn rail-new"
               title="New conversation"
@@ -161,16 +163,14 @@ export default function App() {
           </>
         ) : (
           <>
-            <div className="brand">
+            <div
+              className="brand"
+              title="Collapse sidebar"
+              role="button"
+              onClick={toggleSidebar}
+            >
               <span className="brand-mark" />
               <span className="brand-name">cowork</span>
-              <button
-                className="icon-btn brand-collapse"
-                title="Collapse sidebar"
-                onClick={toggleSidebar}
-              >
-                «
-              </button>
             </div>
             <ConversationList
               conversations={conversationsQuery.data ?? []}
@@ -277,6 +277,7 @@ export default function App() {
               conversationId={conversation.id}
               participants={conversation.participants}
               disabled={conversation.status === 'ARCHIVED'}
+              pasteThreshold={conversation.pasteThreshold ?? 250}
               onSent={clearRoundLimit}
             />
           </>

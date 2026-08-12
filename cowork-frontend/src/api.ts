@@ -42,6 +42,8 @@ export interface ConversationView {
   budgetUsd: number | null
   spentUsd: number
   paused: boolean
+  /** Pasted text longer than this collapses into a placeholder chip (sent inline); 0 disables. */
+  pasteThreshold: number
   /** Frontend-only: filled in from phase events / phase switch responses. */
   workspacePath?: string | null
 }
@@ -170,6 +172,8 @@ export interface PatchConversationRequest {
   /** 0 clears the budget. */
   budgetUsd?: number
   paused?: boolean
+  /** 0 disables the paste placeholder. */
+  pasteThreshold?: number
 }
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
@@ -230,10 +234,15 @@ export function getDocs(conversationId: string): Promise<DocView[]> {
   return http(`/conversations/${conversationId}/files`)
 }
 
-export async function uploadDoc(conversationId: string, file: File): Promise<DocView> {
+export async function uploadDoc(
+  conversationId: string,
+  file: File,
+  opts?: { silent?: boolean },
+): Promise<DocView> {
   const form = new FormData()
   form.append('file', file)
-  const res = await fetch(`/api/conversations/${conversationId}/files`, {
+  const query = opts?.silent ? '?silent=true' : ''
+  const res = await fetch(`/api/conversations/${conversationId}/files${query}`, {
     method: 'POST',
     body: form,
   })

@@ -422,13 +422,18 @@ textarea:disabled {
   gap: 10px;
   padding: 16px 16px 12px;
   border-bottom: 1px solid var(--border-subtle);
+  cursor: pointer;
+  user-select: none;
+}
+
+.brand:hover .brand-mark {
+  filter: brightness(1.15);
 }
 
 .brand-mark {
-  width: 22px;
-  height: 22px;
-  border-radius: 7px;
-  background: linear-gradient(135deg, var(--accent), var(--purple));
+  width: 36px;
+  height: 36px;
+  background: url('/icon.svg') center / contain no-repeat;
   flex-shrink: 0;
 }
 
@@ -436,12 +441,6 @@ textarea:disabled {
   font-size: 17px;
   font-weight: 700;
   letter-spacing: 0.5px;
-}
-
-.brand-collapse {
-  margin-left: auto;
-  font-size: 15px;
-  line-height: 1;
 }
 
 /* ---------- Collapsed sidebar rail ---------- */
@@ -1471,7 +1470,7 @@ textarea:disabled {
   position: relative;
   border-top: 1px solid var(--border-subtle);
   background: var(--bg-panel);
-  padding: 12px 20px 14px;
+  padding: 6px;
 }
 
 .message-input {
@@ -1488,15 +1487,106 @@ textarea:disabled {
   line-height: 1.4;
 }
 
-.send-btn {
+.message-input-wrap.drag-active {
+  outline: 2px dashed var(--accent, #7c8cf8);
+  outline-offset: -4px;
+}
+
+.attach-btn {
   height: 38px;
-  min-width: 70px;
+  width: 38px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  cursor: pointer;
+  color: inherit;
+}
+
+.attach-btn:hover:not(:disabled) {
+  background: var(--bg-elevated);
+}
+
+.attach-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.paste-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+  padding: 6px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.pending-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 0 6px;
+}
+
+.pending-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 280px;
+  padding: 3px 6px 3px 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.pending-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pending-chip-size {
+  opacity: 0.6;
+  flex: none;
+}
+
+.pending-chip-remove {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.pending-chip-remove:hover:not(:disabled) {
+  opacity: 1;
+  background: var(--border-subtle);
 }
 
 .mention-dropdown {
   position: absolute;
   bottom: calc(100% + 6px); /* fully above the input, never covering it */
-  left: 20px;
+  left: 6px; /* aligned with the input's left edge */
   min-width: 220px;
   max-height: 220px;
   overflow-y: auto;

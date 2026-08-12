@@ -30,7 +30,8 @@ public class ConversationController {
     }
 
     public record UpdateRequest(Conversation.VoteMode voteMode, Boolean userVotes, Integer maxAgentRounds,
-                                Conversation.Status status, Double budgetUsd, Boolean paused) {
+                                Conversation.Status status, Double budgetUsd, Boolean paused,
+                                Integer pasteThreshold) {
     }
 
     public record PostMessageRequest(@NotBlank String content) {
@@ -45,13 +46,13 @@ public class ConversationController {
 
     public record ConversationView(UUID id, String title, String phase, String voteMode, int maxAgentRounds,
                                    boolean userVotes, UUID projectId, String status, Double budgetUsd,
-                                   double spentUsd, boolean paused, Instant createdAt,
+                                   double spentUsd, boolean paused, int pasteThreshold, Instant createdAt,
                                    List<ParticipantView> participants) {
 
         static ConversationView of(Conversation c, List<Participant> participants) {
             return new ConversationView(c.getId(), c.getTitle(), c.getPhase().name(), c.getVoteMode().name(),
                     c.getMaxAgentRounds(), c.isUserVotes(), c.getProjectId(), c.getStatus().name(),
-                    c.getBudgetUsd(), c.getSpentUsd(), c.isPaused(), c.getCreatedAt(),
+                    c.getBudgetUsd(), c.getSpentUsd(), c.isPaused(), c.getPasteThreshold(), c.getCreatedAt(),
                     participants.stream().map(ParticipantView::of).toList());
         }
     }
@@ -101,7 +102,8 @@ public class ConversationController {
         boolean pauseChanging = request.paused() != null
                 && request.paused() != service.get(id).isPaused();
         Conversation conversation = service.updateSettings(id, request.voteMode(), request.userVotes(),
-                request.maxAgentRounds(), request.status(), request.budgetUsd(), request.paused());
+                request.maxAgentRounds(), request.status(), request.budgetUsd(), request.paused(),
+                request.pasteThreshold());
         if (pauseChanging) {
             messages.postSystem(id, dev.cowork.message.Message.Kind.SYSTEM,
                     conversation.isPaused()

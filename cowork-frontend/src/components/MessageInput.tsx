@@ -1,14 +1,41 @@
 import { useMemo, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { sendMessage, type ParticipantView } from '../api'
+import { sendMessage, uploadDoc, type ParticipantView } from '../api'
 import { appendMessageToCache } from '../hooks/useConversationEvents'
 
 interface Props {
   conversationId: string
   participants: ParticipantView[]
   disabled?: boolean
+  /** Pasted text longer than this becomes a file attachment; 0 disables. */
+  pasteThreshold: number
   /** Called after a message was sent successfully (e.g. to clear banners). */
   onSent?: () => void
+}
+
+interface PendingAttachment {
+  id: number
+  file: File
+}
+
+/**
+ * Pasted text held out of the textarea. A placeholder token sits inline in the message at
+ * the paste position and is swapped for the full text on send; deleting the token from
+ * the message drops the paste.
+ */
+interface PendingPaste {
+  id: number
+  token: string
+  text: string
+}
+
+/** Pastes above this many characters ask for confirmation before being included. */
+const LARGE_PASTE_WARN = 25_000
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 interface MentionState {
@@ -16,6 +43,9 @@ interface MentionState {
   start: number
   query: string
 }
+
+/** Total entries retained for arrow-key recall, counting the unsubmitted draft slot. */
+const HISTORY_LIMIT = 10
 
 function detectMention(value: string, caret: number): MentionState | null {
   const before = value.slice(0, caret)
@@ -29,12 +59,25 @@ function detectMention(value: string, caret: number): MentionState | null {
   return { start: at, query }
 }
 
-export default function MessageInput({ conversationId, participants, disabled, onSent }: Props) {
+export default function MessageInput({ conversationId, participants, disabled, pasteThreshold, onSent }: Props) {
   const queryClient = useQueryClient()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const attachmentSeq = useRef(0)
+  const pasteSeq = useRef(0)
+  const [pending, setPending] = useState<PendingAttachment[]>([])
+  const [pastes, setPastes] = useState<PendingPaste[]>([])
+  const [confirmPaste, setConfirmPaste] = useState<string | null>(null)
+  const [dragActive, setDragActive] = useState(false)
   const [text, setText] = useState('')
   const [mention, setMention] = useState<MentionState | null>(null)
   const [highlightIndex, setHighlightIndex] = useState(0)
+  const [history, setHistory] = useState<string[]>([])
+  /** Index into history while browsing with arrows; null while editing the draft. */
+  const [navIndex, setNavIndex] = useState<number | null>(null)
+  /** True after arrowing down past the draft cleared the field; ArrowUp restores the draft. */
+  const [belowDraft, setBelowDraft] = useState(false)
+  const draftRef = useRef('')
 
   const names = useMemo(
     () => Array.from(new Set(participants.map((p) => p.displayName))).sort(),
@@ -48,11 +91,81 @@ export default function MessageInput({ conversationId, participants, disabled, o
   }, [mention, names])
 
   const sendMutation = useMutation({
-    mutationFn: (content: string) => sendMessage(conversationId, content),
+    mutationFn: async ({
+      content,
+      attachments,
+      pastedBlocks,
+    }: {
+      content: string
+      attachments: PendingAttachment[]
+      pastedBlocks: PendingPaste[]
+    }) => {
+      // Pasted text is part of the message itself: each inline placeholder token is swapped
+      // for its full text (tokens the user deleted are dropped). File attachments are
+      // uploaded silently and travel as metadata only; agents read them via read_file.
+      let full = content
+      for (const p of pastedBlocks) {
+        if (full.includes(p.token)) {
+          full = full.split(p.token).join(p.text)
+        }
+      }
+      const metaLines: string[] = []
+      for (const att of attachments) {
+        const doc = await uploadDoc(conversationId, att.file, { silent: true })
+        metaLines.push(
+          `- implementation_docs/${doc.name} (${formatSize(doc.size)}` +
+            (att.file.type ? `, ${att.file.type}` : '') +
+            ')',
+        )
+      }
+      if (metaLines.length > 0) {
+        full +=
+          (full ? '\n\n' : '') +
+          '[attached files — metadata only; use the read_file tool or read the path to view contents]\n' +
+          metaLines.join('\n')
+      }
+      return sendMessage(conversationId, full)
+    },
     onSuccess: (message) => {
       appendMessageToCache(queryClient, conversationId, message)
     },
   })
+
+  const addFiles = (files: FileList | File[] | null) => {
+    if (!files || disabled) return
+    const items = Array.from(files).map((file) => ({
+      id: ++attachmentSeq.current,
+      file,
+    }))
+    if (items.length > 0) setPending((p) => [...p, ...items])
+  }
+
+  /** Inserts a placeholder token for the pasted text at the caret position. */
+  const addPaste = (pasted: string) => {
+    const id = ++pasteSeq.current
+    const lines = pasted.split('\n').length
+    const token = `[pasted #${id}: ${lines.toLocaleString()} lines, ${pasted.length.toLocaleString()} chars]`
+    setPastes((p) => [...p, { id, token, text: pasted }])
+    const el = textareaRef.current
+    const caret = el?.selectionStart ?? text.length
+    const caretEnd = el?.selectionEnd ?? caret
+    const nextValue = text.slice(0, caret) + token + text.slice(caretEnd)
+    setText(nextValue)
+    draftRef.current = nextValue
+    setNavIndex(null)
+    setBelowDraft(false)
+    const nextCaret = caret + token.length
+    requestAnimationFrame(() => {
+      const node = textareaRef.current
+      if (node) {
+        node.focus()
+        node.setSelectionRange(nextCaret, nextCaret)
+      }
+      autosize()
+    })
+  }
+
+  const removePending = (id: number) => setPending((p) => p.filter((a) => a.id !== id))
 
   const autosize = () => {
     const el = textareaRef.current
@@ -89,14 +202,39 @@ export default function MessageInput({ conversationId, participants, disabled, o
 
   const doSend = () => {
     const content = text.trim()
-    if (!content || sendMutation.isPending || disabled) return
-    sendMutation.mutate(content, {
+    if ((!content && pending.length === 0) || sendMutation.isPending || disabled) return
+    sendMutation.mutate({ content, attachments: pending, pastedBlocks: pastes }, {
       onSuccess: () => {
+        if (content) {
+          setHistory((h) => [...h, content].slice(-(HISTORY_LIMIT - 1)))
+        }
+        draftRef.current = ''
+        setNavIndex(null)
+        setBelowDraft(false)
         setText('')
         setMention(null)
+        setPending([])
+        setPastes([])
+        setConfirmPaste(null)
         requestAnimationFrame(autosize)
         onSent?.()
       },
+    })
+  }
+
+  /** Show a history entry (or the saved draft when index is null) in the textarea. */
+  const showEntry = (value: string, index: number | null, below = false) => {
+    setNavIndex(index)
+    setBelowDraft(below)
+    setText(value)
+    setMention(null)
+    requestAnimationFrame(() => {
+      const node = textareaRef.current
+      if (node) {
+        node.focus()
+        node.setSelectionRange(value.length, value.length)
+      }
+      autosize()
     })
   }
 
@@ -123,6 +261,45 @@ export default function MessageInput({ conversationId, participants, disabled, o
         return
       }
     }
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      const el = e.currentTarget
+      const noSelection = el.selectionStart === el.selectionEnd
+      const caret = el.selectionStart ?? 0
+      // Only leave the arrow keys to the caret when there are lines to move across.
+      if (e.key === 'ArrowUp' && noSelection && !el.value.slice(0, caret).includes('\n')) {
+        if (belowDraft) {
+          // Recover whatever was cleared by arrowing down past it, sent or not.
+          e.preventDefault()
+          showEntry(draftRef.current, null)
+        } else if (navIndex === null) {
+          if (history.length > 0) {
+            e.preventDefault()
+            draftRef.current = text
+            showEntry(history[history.length - 1], history.length - 1)
+          }
+        } else if (navIndex > 0) {
+          e.preventDefault()
+          showEntry(history[navIndex - 1], navIndex - 1)
+        }
+        return
+      }
+      if (e.key === 'ArrowDown' && noSelection && !el.value.slice(el.selectionEnd ?? 0).includes('\n')) {
+        if (navIndex !== null) {
+          e.preventDefault()
+          if (navIndex < history.length - 1) {
+            showEntry(history[navIndex + 1], navIndex + 1)
+          } else {
+            showEntry(draftRef.current, null)
+          }
+        } else if (!belowDraft && text.length > 0) {
+          // Arrowing down past the draft clears the field; ArrowUp brings it back.
+          e.preventDefault()
+          draftRef.current = text
+          showEntry('', null, true)
+        }
+        return
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       doSend()
@@ -130,7 +307,23 @@ export default function MessageInput({ conversationId, participants, disabled, o
   }
 
   return (
-    <div className="message-input-wrap">
+    <div
+      className={`message-input-wrap${dragActive ? ' drag-active' : ''}`}
+      onDragOver={(e) => {
+        if (disabled || !e.dataTransfer.types.includes('Files')) return
+        e.preventDefault()
+        setDragActive(true)
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragActive(false)
+      }}
+      onDrop={(e) => {
+        if (disabled) return
+        e.preventDefault()
+        setDragActive(false)
+        addFiles(e.dataTransfer.files)
+      }}
+    >
       {mention && suggestions.length > 0 && (
         <div className="mention-dropdown" role="listbox">
           {suggestions.map((name, i) => (
@@ -151,7 +344,68 @@ export default function MessageInput({ conversationId, participants, disabled, o
         </div>
       )}
 
+      {confirmPaste !== null && (
+        <div className="paste-confirm">
+          <span className="paste-confirm-text">
+            Large paste: {confirmPaste.split('\n').length.toLocaleString()} lines,{' '}
+            {confirmPaste.length.toLocaleString()} characters. Include it with your message?
+          </span>
+          <div className="btn-row">
+            <button
+              className="btn btn-tiny"
+              onClick={() => {
+                addPaste(confirmPaste)
+                setConfirmPaste(null)
+              }}
+            >
+              Include
+            </button>
+            <button className="btn btn-tiny" onClick={() => setConfirmPaste(null)}>
+              Discard
+            </button>
+          </div>
+        </div>
+      )}
+
+      {pending.length > 0 && (
+        <div className="pending-files">
+          {pending.map((att) => (
+            <span className="pending-chip" key={att.id} title={att.file.name}>
+              <span className="pending-chip-icon">📎</span>
+              <span className="pending-chip-name">{att.file.name}</span>
+              <span className="pending-chip-size">{formatSize(att.file.size)}</span>
+              <button
+                className="pending-chip-remove"
+                title="Remove attachment"
+                disabled={sendMutation.isPending}
+                onClick={() => removePending(att.id)}
+              >
+                ✕
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className="message-input">
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          hidden
+          onChange={(e) => {
+            addFiles(e.target.files)
+            e.target.value = ''
+          }}
+        />
+        <button
+          className="attach-btn"
+          title="Attach files"
+          disabled={disabled || sendMutation.isPending}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          📎
+        </button>
         <textarea
           ref={textareaRef}
           rows={1}
@@ -160,14 +414,30 @@ export default function MessageInput({ conversationId, participants, disabled, o
           placeholder={
             disabled
               ? 'This conversation is archived.'
-              : 'Message the team…  (@ to mention, Enter to send, Shift+Enter for newline)'
+              : 'Message the team…  (@ to mention, Enter to send, Shift+Enter for newline, ↑/↓ for history)'
           }
           onChange={(e) => {
             setText(e.target.value)
+            // Any edit becomes the live draft — the one unsubmitted entry in history.
+            draftRef.current = e.target.value
+            if (navIndex !== null) setNavIndex(null)
+            if (belowDraft) setBelowDraft(false)
             autosize()
             requestAnimationFrame(refreshMention)
           }}
           onClick={refreshMention}
+          onPaste={(e) => {
+            if (pasteThreshold <= 0 || disabled) return
+            const pasted = e.clipboardData.getData('text/plain')
+            if (pasted.length > pasteThreshold) {
+              e.preventDefault()
+              if (pasted.length > LARGE_PASTE_WARN) {
+                setConfirmPaste(pasted)
+              } else {
+                addPaste(pasted)
+              }
+            }
+          }}
           onKeyDown={onKeyDown}
           onKeyUp={(e) => {
             if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') {
@@ -179,13 +449,6 @@ export default function MessageInput({ conversationId, participants, disabled, o
             window.setTimeout(() => setMention(null), 150)
           }}
         />
-        <button
-          className="btn btn-primary send-btn"
-          disabled={disabled || sendMutation.isPending || text.trim().length === 0}
-          onClick={doSend}
-        >
-          {sendMutation.isPending ? '…' : 'Send'}
-        </button>
       </div>
       {sendMutation.isError && (
         <div className="form-error">

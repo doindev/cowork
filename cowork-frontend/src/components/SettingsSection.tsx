@@ -23,6 +23,7 @@ export default function SettingsSection({ conversation, alwaysOpen = false }: Pr
   const [budget, setBudget] = useState(
     conversation.budgetUsd != null ? String(conversation.budgetUsd) : '',
   )
+  const [pasteThreshold, setPasteThreshold] = useState(conversation.pasteThreshold)
   const [agentToAdd, setAgentToAdd] = useState('')
 
   useEffect(() => {
@@ -32,6 +33,10 @@ export default function SettingsSection({ conversation, alwaysOpen = false }: Pr
   useEffect(() => {
     setBudget(conversation.budgetUsd != null ? String(conversation.budgetUsd) : '')
   }, [conversation.budgetUsd])
+
+  useEffect(() => {
+    setPasteThreshold(conversation.pasteThreshold)
+  }, [conversation.pasteThreshold])
 
   const agentsQuery = useQuery({ queryKey: ['agents'], queryFn: getAgents, enabled: open })
 
@@ -70,6 +75,14 @@ export default function SettingsSection({ conversation, alwaysOpen = false }: Pr
     const current = conversation.budgetUsd ?? 0
     if (value !== current) {
       patchMutation.mutate({ budgetUsd: value })
+    }
+  }
+
+  const commitPasteThreshold = (value: number) => {
+    const clamped = Math.max(0, Math.floor(value) || 0)
+    setPasteThreshold(clamped)
+    if (clamped !== conversation.pasteThreshold) {
+      patchMutation.mutate({ pasteThreshold: clamped })
     }
   }
 
@@ -145,6 +158,24 @@ export default function SettingsSection({ conversation, alwaysOpen = false }: Pr
             <span className="field-hint">
               Spent so far: {formatUsd2(conversation.spentUsd ?? 0)}
               {conversation.budgetUsd == null ? ' · no budget set (0 clears)' : ''}
+            </span>
+          </label>
+
+          <label className="field">
+            <span className="field-label">Paste placeholder threshold (chars, 0 = off)</span>
+            <input
+              className="num-input"
+              type="number"
+              min={0}
+              value={pasteThreshold}
+              onChange={(e) => setPasteThreshold(Number(e.target.value))}
+              onBlur={(e) => commitPasteThreshold(Number(e.target.value))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitPasteThreshold(pasteThreshold)
+              }}
+            />
+            <span className="field-hint">
+              Longer pastes become an inline placeholder that is expanded back into the message when sent.
             </span>
           </label>
 

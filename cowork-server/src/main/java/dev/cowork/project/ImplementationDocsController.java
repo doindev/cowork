@@ -60,8 +60,13 @@ public class ImplementationDocsController {
         this.sseHub = sseHub;
     }
 
+    /**
+     * Uploads a file. With {@code silent=true} no system message is posted — used by chat
+     * attachments, whose metadata is delivered inside the user's own message instead.
+     */
     @PostMapping
-    public DocView upload(@PathVariable UUID conversationId, @RequestParam("file") MultipartFile file)
+    public DocView upload(@PathVariable UUID conversationId, @RequestParam("file") MultipartFile file,
+                          @RequestParam(value = "silent", defaultValue = "false") boolean silent)
             throws IOException {
         if (file.isEmpty()) {
             throw new IllegalArgumentException("Uploaded file is empty");
@@ -80,9 +85,11 @@ public class ImplementationDocsController {
             Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
         }
         String storedName = target.getFileName().toString();
-        messages.postSystem(conversationId, Message.Kind.SYSTEM,
-                "The user uploaded \"" + storedName + "\" — agents can review it at "
-                        + DOCS_DIR + "/" + storedName + " in the workspace.", null);
+        if (!silent) {
+            messages.postSystem(conversationId, Message.Kind.SYSTEM,
+                    "The user uploaded \"" + storedName + "\" — agents can review it at "
+                            + DOCS_DIR + "/" + storedName + " in the workspace.", null);
+        }
         DocView view = new DocView(storedName, Files.size(target),
                 Files.getLastModifiedTime(target).toInstant());
         sseHub.publish(conversationId, "doc", view);
@@ -164,7 +171,7 @@ public class ImplementationDocsController {
     }
 
     /** Strips any path components and dangerous characters from a client-supplied filename. */
-    private static String sanitize(String filename) {
+    public static String sanitize(String filename) {
         if (filename == null || filename.isBlank()) {
             throw new IllegalArgumentException("Missing filename");
         }

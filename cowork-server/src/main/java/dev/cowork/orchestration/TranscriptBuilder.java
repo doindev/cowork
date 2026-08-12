@@ -76,7 +76,9 @@ public class TranscriptBuilder {
         if (hasImplementationDocs) {
             sb.append("- The user uploaded reference files (specs, mockups, screenshots) to the ")
                     .append("implementation_docs/ directory in your working directory — read them ")
-                    .append("before making design decisions.\n");
+                    .append("before making design decisions. Chat messages list attached files as ")
+                    .append("metadata only; fetch contents with the list_files/read_file MCP tools ")
+                    .append("or read them straight from implementation_docs/.\n");
         }
         sb.append("- STAY FOCUSED on the user's actual request: every discussion point, proposal, and task ")
                 .append("must trace back to something the user asked for. Do not invent requirements, expand ")
