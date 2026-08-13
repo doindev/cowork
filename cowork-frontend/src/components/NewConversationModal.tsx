@@ -110,14 +110,6 @@ export default function NewConversationModal({ onClose, onCreated }: Props) {
     },
   })
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
-
   const toggleAgent = (id: string) => {
     setSelectedAgents((prev) =>
       prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id],
@@ -140,18 +132,10 @@ export default function NewConversationModal({ onClose, onCreated }: Props) {
   }
 
   return (
-    <div
-      className="modal-overlay"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
-    >
+    <div className="modal-overlay">
       <div className="modal" role="dialog" aria-modal="true" aria-label="New conversation">
         <div className="modal-header">
           <h2>New conversation</h2>
-          <button className="icon-btn" onClick={onClose} aria-label="Close">
-            ✕
-          </button>
         </div>
 
         <div className="modal-body">

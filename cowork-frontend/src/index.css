@@ -305,6 +305,7 @@ textarea:disabled {
 }
 
 .dir-row {
+  flex-shrink: 0; /* long listings must scroll, not crush the rows to zero height */
   text-align: left;
   padding: 5px 8px;
   border-radius: var(--radius-sm);
