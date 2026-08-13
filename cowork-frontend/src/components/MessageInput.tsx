@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { sendMessage, uploadDoc, type ParticipantView } from '../api'
 import { appendMessageToCache } from '../hooks/useConversationEvents'
@@ -47,6 +47,18 @@ interface MentionState {
 /** Total entries retained for arrow-key recall, counting the unsubmitted draft slot. */
 const HISTORY_LIMIT = 10
 
+const historyKey = (conversationId: string) => `cowork.inputHistory.${conversationId}`
+
+/** Load the persisted submitted-message history for a conversation. */
+function loadHistory(conversationId: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(historyKey(conversationId)) ?? '[]')
+    return Array.isArray(parsed) ? parsed.filter((e): e is string => typeof e === 'string') : []
+  } catch {
+    return []
+  }
+}
+
 function detectMention(value: string, caret: number): MentionState | null {
   const before = value.slice(0, caret)
   const at = before.lastIndexOf('@')
@@ -72,12 +84,19 @@ export default function MessageInput({ conversationId, participants, disabled, p
   const [text, setText] = useState('')
   const [mention, setMention] = useState<MentionState | null>(null)
   const [highlightIndex, setHighlightIndex] = useState(0)
-  const [history, setHistory] = useState<string[]>([])
+  const [history, setHistory] = useState<string[]>(() => loadHistory(conversationId))
   /** Index into history while browsing with arrows; null while editing the draft. */
   const [navIndex, setNavIndex] = useState<number | null>(null)
   /** True after arrowing down past the draft cleared the field; ArrowUp restores the draft. */
   const [belowDraft, setBelowDraft] = useState(false)
   const draftRef = useRef('')
+
+  // Each conversation has its own persisted history.
+  useEffect(() => {
+    setHistory(loadHistory(conversationId))
+    setNavIndex(null)
+    setBelowDraft(false)
+  }, [conversationId])
 
   const names = useMemo(
     () => Array.from(new Set(participants.map((p) => p.displayName))).sort(),
@@ -206,7 +225,15 @@ export default function MessageInput({ conversationId, participants, disabled, p
     sendMutation.mutate({ content, attachments: pending, pastedBlocks: pastes }, {
       onSuccess: () => {
         if (content) {
-          setHistory((h) => [...h, content].slice(-(HISTORY_LIMIT - 1)))
+          setHistory((h) => {
+            const next = [...h, content].slice(-(HISTORY_LIMIT - 1))
+            try {
+              localStorage.setItem(historyKey(conversationId), JSON.stringify(next))
+            } catch {
+              /* quota/serialization issues just lose persistence, not the send */
+            }
+            return next
+          })
         }
         draftRef.current = ''
         setNavIndex(null)
