@@ -191,7 +191,7 @@ public class ClaudeCodeRunner implements CliAgentRunner {
             ProcessExecutor.ExecResult result = executor.run(cmd, request.workDir(), Map.of(),
                     request.prompt(), request.timeout(), effective::onProcessStart, state::onLine);
             if (result.timedOut()) {
-                throw new CliTurnException("claude turn timed out after " + request.timeout());
+                throw new CliTurnException("claude turn timed out after " + request.timeout().toMinutes() + " minutes");
             }
             if (state.errorText != null) {
                 throw new CliTurnException("claude reported an error: " + truncate(state.errorText, 500));

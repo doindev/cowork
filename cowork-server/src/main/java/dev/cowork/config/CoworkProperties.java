@@ -12,7 +12,7 @@ public record CoworkProperties(
     public record Cli(int maxConcurrent, int turnTimeoutSeconds) {
         public Cli {
             if (maxConcurrent <= 0) maxConcurrent = 4;
-            if (turnTimeoutSeconds <= 0) turnTimeoutSeconds = 300;
+            if (turnTimeoutSeconds <= 0) turnTimeoutSeconds = 900;
         }
     }
 

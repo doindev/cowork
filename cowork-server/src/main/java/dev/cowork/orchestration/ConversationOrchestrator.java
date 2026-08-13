@@ -116,7 +116,8 @@ public class ConversationOrchestrator {
                 prompt = prompt + "\n[COORDINATOR]\n" + job.nudge() + "\n";
             }
 
-            AgentTurnService.TurnOutcome outcome = turnService.execute(conversation, participant, prompt, job.round());
+            AgentTurnService.TurnOutcome outcome =
+                    turnService.execute(conversation, participant, prompt, job.round(), job.retried());
 
             // Advance the delta cursor only on success so a retried turn re-sends the same context.
             if (!stateless && outcome.failure() == AgentTurnService.TurnFailure.NONE) {

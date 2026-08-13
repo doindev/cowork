@@ -86,7 +86,7 @@ public class CodexRunner implements CliAgentRunner {
                     Map.of("CODEX_HOME", codexHome.toString()), request.prompt(), request.timeout(),
                     effective::onProcessStart, null);
             if (result.timedOut()) {
-                throw new CliTurnException("codex turn timed out after " + request.timeout());
+                throw new CliTurnException("codex turn timed out after " + request.timeout().toMinutes() + " minutes");
             }
             if (result.exitCode() != 0) {
                 throw new CliTurnException("codex exited with code " + result.exitCode()

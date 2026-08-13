@@ -42,6 +42,7 @@ cowork:
   workspaces-dir: ../workspaces
   cli:
     max-concurrent: 4
-    turn-timeout-seconds: 300
+    # Long implementation turns routinely exceed 5 minutes; retries get double this.
+    turn-timeout-seconds: 900
   mcp:
     base-url: http://localhost:8090/mcp

@@ -85,7 +85,7 @@ public class CopilotRunner implements CliAgentRunner {
                     Map.of("COPILOT_HOME", copilotHome.toString()), prompt, request.timeout(),
                     effective::onProcessStart, null);
             if (result.timedOut()) {
-                throw new CliTurnException("copilot turn timed out after " + request.timeout());
+                throw new CliTurnException("copilot turn timed out after " + request.timeout().toMinutes() + " minutes");
             }
             if (result.exitCode() != 0) {
                 throw new CliTurnException("copilot exited with code " + result.exitCode()

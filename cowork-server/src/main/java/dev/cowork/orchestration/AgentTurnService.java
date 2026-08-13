@@ -104,8 +104,13 @@ public class AgentTurnService {
                 .orElse(false);
     }
 
-    /** Runs the agent's turn and posts its reply. */
-    public TurnOutcome execute(Conversation conversation, Participant participant, String prompt, int round) {
+    /**
+     * Runs the agent's turn and posts its reply. A retry attempt (after a timeout or
+     * crash) gets double the configured turn timeout, since timeouts usually mean the
+     * turn was genuinely long-running rather than stuck.
+     */
+    public TurnOutcome execute(Conversation conversation, Participant participant, String prompt, int round,
+                               boolean retry) {
         if (conversation.isBudgetExhausted()) {
             return TurnOutcome.of(TurnFailure.SKIPPED, "budget exhausted");
         }
@@ -144,7 +149,7 @@ public class AgentTurnService {
                     token,
                     conversation.getPhase() == Conversation.Phase.IMPLEMENTATION,
                     parseOptions(agent.getOptions()),
-                    Duration.ofSeconds(properties.cli().turnTimeoutSeconds()));
+                    Duration.ofSeconds(properties.cli().turnTimeoutSeconds() * (retry ? 2L : 1L)));
 
             TurnListener listener = new TurnListener() {
                 @Override
