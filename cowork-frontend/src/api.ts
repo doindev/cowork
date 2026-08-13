@@ -44,6 +44,8 @@ export interface ConversationView {
   paused: boolean
   /** Pasted text longer than this collapses into a placeholder chip (sent inline); 0 disables. */
   pasteThreshold: number
+  /** Automatically nudge agents when the conversation stalls before the goal is reached. */
+  autoContinue: boolean
   /** Frontend-only: filled in from phase events / phase switch responses. */
   workspacePath?: string | null
 }
@@ -174,6 +176,7 @@ export interface PatchConversationRequest {
   paused?: boolean
   /** 0 disables the paste placeholder. */
   pasteThreshold?: number
+  autoContinue?: boolean
 }
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
@@ -430,4 +433,14 @@ export function cancelTurn(
 
 export function continueRounds(conversationId: string): Promise<{ resumed: number }> {
   return http(`/conversations/${conversationId}/continue`, { method: 'POST' })
+}
+
+/** Why the agents are idle right now; reason is '' when they are not. */
+export interface IdleStateView {
+  reason: string
+  detail?: string
+}
+
+export function getIdleState(conversationId: string): Promise<IdleStateView> {
+  return http(`/conversations/${conversationId}/idle-state`)
 }

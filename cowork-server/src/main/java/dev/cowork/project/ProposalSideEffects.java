@@ -45,11 +45,15 @@ public class ProposalSideEffects {
     @EventListener
     public void onDecided(ProposalDecidedEvent event) {
         Proposal proposal = event.proposal();
-        if (proposal.getStatus() != Proposal.Status.PASSED) {
-            return;
-        }
         Conversation conversation = conversations.findById(proposal.getConversationId()).orElse(null);
         if (conversation == null) {
+            return;
+        }
+        if (proposal.getStatus() == Proposal.Status.REJECTED) {
+            nudgeProposerAfterRejection(conversation, proposal);
+            return;
+        }
+        if (proposal.getStatus() != Proposal.Status.PASSED) {
             return;
         }
         switch (proposal.getType()) {
@@ -58,6 +62,21 @@ public class ProposalSideEffects {
                             + "from the phase banner.", proposal.getId());
             case TASK_ASSIGNMENT -> applyTaskAssignment(conversation, proposal);
             case CODE_CHANGE -> triggerImplementer(conversation, proposal);
+        }
+    }
+
+    /** A rejection must not end the discussion — send the proposer back to work. */
+    private void nudgeProposerAfterRejection(Conversation conversation, Proposal proposal) {
+        Participant proposer = participants.findById(proposal.getProposerParticipantId()).orElse(null);
+        if (proposer == null || proposer.getKind() != Participant.Kind.AGENT || !proposer.isActive()) {
+            return;
+        }
+        boolean nudged = orchestrator.tryAutoNudge(conversation, proposer.getId(),
+                "Your proposal \"" + proposal.getTitle() + "\" was REJECTED. Review the vote rationales "
+                        + "(list_proposals), then either raise a revised alternative or continue with the "
+                        + "next piece of work. End your reply with an @mention hand-off or @user.");
+        if (nudged) {
+            log.info("Nudged '{}' after rejection of \"{}\"", proposer.getDisplayName(), proposal.getTitle());
         }
     }
 

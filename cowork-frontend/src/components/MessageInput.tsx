@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { sendMessage, uploadDoc, type ParticipantView } from '../api'
+import { patchConversation, sendMessage, uploadDoc, type ParticipantView } from '../api'
 import { appendMessageToCache } from '../hooks/useConversationEvents'
 
 interface Props {
@@ -9,6 +9,8 @@ interface Props {
   disabled?: boolean
   /** Pasted text longer than this becomes a file attachment; 0 disables. */
   pasteThreshold: number
+  /** Whether stalled agents are automatically nudged (per-conversation setting). */
+  autoContinue: boolean
   /** Called after a message was sent successfully (e.g. to clear banners). */
   onSent?: () => void
 }
@@ -114,7 +116,14 @@ function detectMention(value: string, caret: number): MentionState | null {
   return { start: at, query }
 }
 
-export default function MessageInput({ conversationId, participants, disabled, pasteThreshold, onSent }: Props) {
+export default function MessageInput({
+  conversationId,
+  participants,
+  disabled,
+  pasteThreshold,
+  autoContinue,
+  onSent,
+}: Props) {
   const queryClient = useQueryClient()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -200,6 +209,14 @@ export default function MessageInput({ conversationId, participants, disabled, p
     },
     onSuccess: (message) => {
       appendMessageToCache(queryClient, conversationId, message)
+    },
+  })
+
+  const autoContinueMutation = useMutation({
+    mutationFn: (value: boolean) => patchConversation(conversationId, { autoContinue: value }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['conversation', conversationId], updated)
+      queryClient.invalidateQueries({ queryKey: ['conversations'] })
     },
   })
 
@@ -533,6 +550,19 @@ export default function MessageInput({ conversationId, participants, disabled, p
             window.setTimeout(() => setMention(null), 150)
           }}
         />
+        <button
+          className={`auto-continue-btn${autoContinue ? ' on' : ''}`}
+          title={
+            autoContinue
+              ? 'Auto-continue agents: on — click to disable'
+              : 'Auto-continue agents: off — click to enable'
+          }
+          aria-pressed={autoContinue}
+          disabled={disabled || autoContinueMutation.isPending}
+          onClick={() => autoContinueMutation.mutate(!autoContinue)}
+        >
+          ⚡
+        </button>
       </div>
       {sendMutation.isError && (
         <div className="form-error">

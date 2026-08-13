@@ -6,6 +6,7 @@ import type {
   AgentStatusEvent,
   CommitView,
   ConversationView,
+  IdleStateView,
   MessageView,
   PartialEvent,
   PhaseInfo,
@@ -29,6 +30,9 @@ export interface ConversationEventsState {
   /** Dropped agent names from the last round-limit event, or null when no banner. */
   roundLimit: string[] | null
   clearRoundLimit: () => void
+  /** Why the agents are idle, or null when they are not. */
+  idleState: IdleStateView | null
+  setIdleState: (state: IdleStateView | null) => void
 }
 
 function withoutKey<T>(map: Record<string, T>, key: string): Record<string, T> {
@@ -122,6 +126,7 @@ export function useConversationEvents(conversationId: string | null): Conversati
   const [partials, setPartials] = useState<Record<string, string>>({})
   const [activities, setActivities] = useState<Record<string, ActivityEntry[]>>({})
   const [roundLimit, setRoundLimit] = useState<string[] | null>(null)
+  const [idleState, setIdleState] = useState<IdleStateView | null>(null)
 
   const clearRoundLimit = useCallback(() => setRoundLimit(null), [])
 
@@ -130,6 +135,7 @@ export function useConversationEvents(conversationId: string | null): Conversati
     setPartials({})
     setActivities({})
     setRoundLimit(null)
+    setIdleState(null)
     if (!conversationId) return
 
     let source: EventSource | null = null
@@ -252,6 +258,11 @@ export function useConversationEvents(conversationId: string | null): Conversati
         }
       })
 
+      source.addEventListener('idle-state', (event) => {
+        const state = parse<IdleStateView>(event)
+        if (state) setIdleState(state.reason ? state : null)
+      })
+
       source.onerror = () => {
         source?.close()
         source = null
@@ -272,7 +283,7 @@ export function useConversationEvents(conversationId: string | null): Conversati
   }, [conversationId, queryClient])
 
   return useMemo(
-    () => ({ agentStatuses, partials, activities, roundLimit, clearRoundLimit }),
-    [agentStatuses, partials, activities, roundLimit, clearRoundLimit],
+    () => ({ agentStatuses, partials, activities, roundLimit, clearRoundLimit, idleState, setIdleState }),
+    [agentStatuses, partials, activities, roundLimit, clearRoundLimit, idleState],
   )
 }

@@ -1539,6 +1539,37 @@ textarea:disabled {
   cursor: default;
 }
 
+.auto-continue-btn {
+  height: 38px;
+  width: 38px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.35;
+  filter: grayscale(1);
+}
+
+.auto-continue-btn.on {
+  opacity: 1;
+  filter: none;
+  border-color: var(--accent);
+}
+
+.auto-continue-btn:hover:not(:disabled) {
+  background: var(--bg-elevated);
+}
+
+.auto-continue-btn:disabled {
+  cursor: default;
+}
+
 .paste-confirm {
   display: flex;
   align-items: center;

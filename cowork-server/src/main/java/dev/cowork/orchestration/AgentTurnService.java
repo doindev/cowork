@@ -73,6 +73,29 @@ public class AgentTurnService {
         this.cliSemaphore = new Semaphore(properties.cli().maxConcurrent());
     }
 
+    /** How an agent turn ended, so the orchestrator can retry or surface the outcome. */
+    public enum TurnFailure {
+        /** Reply posted normally. */
+        NONE,
+        /** Turn intentionally skipped (budget exhausted, executor interrupted). */
+        SKIPPED,
+        /** Agent or its CLI is unavailable — retrying cannot help. */
+        CONFIG,
+        /** The user cancelled the running turn. */
+        CANCELLED,
+        /** The CLI failed (crash, timeout, error) — worth one retry. */
+        FAILED,
+        /** The CLI succeeded but returned an empty reply — worth one retry. */
+        BLANK
+    }
+
+    public record TurnOutcome(Message message, TurnFailure failure, String detail) {
+
+        static TurnOutcome ok(Message message) { return new TurnOutcome(message, TurnFailure.NONE, null); }
+
+        static TurnOutcome of(TurnFailure failure, String detail) { return new TurnOutcome(null, failure, detail); }
+    }
+
     /** Stateless CLIs (no session resume) need the full history each turn, not a delta. */
     public boolean isStateless(Participant participant) {
         return agents.findById(participant.getAgentId())
@@ -81,23 +104,23 @@ public class AgentTurnService {
                 .orElse(false);
     }
 
-    /** Runs the agent's turn and posts its reply. Returns the posted message, or null. */
-    public Message execute(Conversation conversation, Participant participant, String prompt, int round) {
+    /** Runs the agent's turn and posts its reply. */
+    public TurnOutcome execute(Conversation conversation, Participant participant, String prompt, int round) {
         if (conversation.isBudgetExhausted()) {
-            return null; // The orchestrator posts the budget notice; skip silently here.
+            return TurnOutcome.of(TurnFailure.SKIPPED, "budget exhausted");
         }
         AgentDef agent = agents.findById(participant.getAgentId()).orElse(null);
         if (agent == null || !agent.isEnabled()) {
             messages.postSystem(conversation.getId(), Message.Kind.SYSTEM,
                     "Agent '" + participant.getDisplayName() + "' is no longer available.", null);
-            return null;
+            return TurnOutcome.of(TurnFailure.CONFIG, "agent is no longer available");
         }
         CliAgentRunner runner = runners.forType(agent.getCliType()).orElse(null);
         if (runner == null || !runner.available()) {
             messages.postSystem(conversation.getId(), Message.Kind.SYSTEM,
                     "Agent '" + agent.getName() + "' uses CLI '" + agent.getCliType()
                             + "' which is not installed on this machine.", null);
-            return null;
+            return TurnOutcome.of(TurnFailure.CONFIG, "CLI '" + agent.getCliType() + "' is not installed");
         }
 
         publishStatus(conversation, participant, "thinking");
@@ -106,7 +129,7 @@ public class AgentTurnService {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             publishStatus(conversation, participant, "idle");
-            return null;
+            return TurnOutcome.of(TurnFailure.SKIPPED, "interrupted");
         }
         try {
             String token = tokens.issueToken(participant);
@@ -152,15 +175,17 @@ public class AgentTurnService {
             commitWorkspaceChanges(conversation, agent.getName());
             recordSpend(conversation, result.costUsd());
             if (result.text() != null && !result.text().isBlank()) {
-                return messages.post(conversation.getId(), participant, result.text().trim(), round,
-                        result.costUsd(), result.activity());
+                return TurnOutcome.ok(messages.post(conversation.getId(), participant, result.text().trim(),
+                        round, result.costUsd(), result.activity()));
             }
-            return null;
+            return TurnOutcome.of(TurnFailure.BLANK, "returned an empty reply");
         } catch (CliTurnException e) {
+            if (activeTurns.consumeCancelled(conversation.getId(), participant.getId())) {
+                log.info("Agent '{}' turn cancelled by the user", agent.getName());
+                return TurnOutcome.of(TurnFailure.CANCELLED, "cancelled by the user");
+            }
             log.warn("Agent '{}' turn failed: {}", agent.getName(), e.getMessage());
-            messages.postSystem(conversation.getId(), Message.Kind.SYSTEM,
-                    "Agent '" + agent.getName() + "' failed this turn: " + e.getMessage(), null);
-            return null;
+            return TurnOutcome.of(TurnFailure.FAILED, e.getMessage());
         } finally {
             activeTurns.unregister(conversation.getId(), participant.getId());
             cliSemaphore.release();

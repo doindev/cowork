@@ -125,6 +125,16 @@ export default function SettingsSection({ conversation, alwaysOpen = false }: Pr
             I vote on proposals too
           </label>
 
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={conversation.autoContinue}
+              disabled={patchMutation.isPending}
+              onChange={(e) => patchMutation.mutate({ autoContinue: e.target.checked })}
+            />
+            Auto-continue stalled agents
+          </label>
+
           <label className="field">
             <span className="field-label">Max agent rounds (0 = unlimited)</span>
             <input

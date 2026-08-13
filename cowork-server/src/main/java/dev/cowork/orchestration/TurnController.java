@@ -39,8 +39,15 @@ public class TurnController {
         return Map.of("cancelled", activeTurns.cancel(conversationId, participantId));
     }
 
+    /** Resumes a stalled conversation: round-limit drops, missing votes, or the phase goal. */
     @PostMapping("/continue")
     public Map<String, Integer> continueRounds(@PathVariable UUID conversationId) {
-        return Map.of("resumed", orchestrator.continueRounds(conversationId));
+        return Map.of("resumed", orchestrator.resume(conversationId));
+    }
+
+    /** Why the agents are idle right now ({@code reason: ""} when they are not). */
+    @GetMapping("/idle-state")
+    public Map<String, String> idleState(@PathVariable UUID conversationId) {
+        return orchestrator.idleState(conversationId);
     }
 }

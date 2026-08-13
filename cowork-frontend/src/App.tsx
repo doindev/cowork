@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { continueRounds, getConversation, getConversations, getMessages } from './api'
+import { continueRounds, getConversation, getConversations, getIdleState, getMessages } from './api'
 import { useConversationEvents } from './hooks/useConversationEvents'
 import { formatUsd2 } from './utils'
 import AgentManagerModal from './components/AgentManagerModal'
@@ -100,12 +100,26 @@ export default function App() {
     staleTime: Infinity,
   })
 
-  const { agentStatuses, partials, activities, roundLimit, clearRoundLimit } =
+  const { agentStatuses, partials, activities, roundLimit, clearRoundLimit, idleState, setIdleState } =
     useConversationEvents(selectedId)
+
+  // Seed the idle banner from server state so it survives page reloads; live
+  // updates then arrive over the SSE idle-state event.
+  const idleQuery = useQuery({
+    queryKey: ['idle-state', selectedId],
+    queryFn: () => getIdleState(selectedId!),
+    enabled: selectedId !== null,
+  })
+  useEffect(() => {
+    if (idleQuery.data) setIdleState(idleQuery.data.reason ? idleQuery.data : null)
+  }, [idleQuery.data, setIdleState])
 
   const continueMutation = useMutation({
     mutationFn: (conversationId: string) => continueRounds(conversationId),
-    onSuccess: clearRoundLimit,
+    onSuccess: () => {
+      clearRoundLimit()
+      setIdleState(null)
+    },
   })
 
   const conversation = selectedId !== null ? (conversationQuery.data ?? null) : null
@@ -243,6 +257,27 @@ export default function App() {
               filterUser={chatFilterUser}
               onToggleFilter={() => setChatFilterUser((v) => !v)}
             />
+            {idleState !== null && (
+              <div className="round-limit-banner idle-banner">
+                <span className="round-limit-text">
+                  {idleState.detail ?? 'Agents are idle.'}
+                </span>
+                <div className="btn-row">
+                  {!['your-vote', 'deadlocked', 'phase-confirm'].includes(idleState.reason) && (
+                    <button
+                      className="btn btn-tiny"
+                      disabled={continueMutation.isPending}
+                      onClick={() => continueMutation.mutate(conversation.id)}
+                    >
+                      {continueMutation.isPending ? 'Resuming…' : 'Resume agents'}
+                    </button>
+                  )}
+                  <button className="btn btn-tiny" onClick={() => setIdleState(null)}>
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            )}
             {roundLimit !== null && (
               <div className="round-limit-banner">
                 <span className="round-limit-text">
@@ -278,6 +313,7 @@ export default function App() {
               participants={conversation.participants}
               disabled={conversation.status === 'ARCHIVED'}
               pasteThreshold={conversation.pasteThreshold ?? 250}
+              autoContinue={conversation.autoContinue ?? true}
               onSent={clearRoundLimit}
             />
           </>

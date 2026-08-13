@@ -27,6 +27,8 @@ public class Conversation implements UuidAssignable {
     private boolean paused = false;
     /** Pasted chat text longer than this collapses into a placeholder chip in the UI; 0 disables. */
     private int pasteThreshold = 250;
+    /** Automatically nudge agents when the conversation stalls before the goal is reached. */
+    private boolean autoContinue = true;
     private UUID projectId;
     private Status status = Status.ACTIVE;
     private Double budgetUsd;
@@ -86,6 +88,10 @@ public class Conversation implements UuidAssignable {
     public int getPasteThreshold() { return pasteThreshold; }
 
     public void setPasteThreshold(int pasteThreshold) { this.pasteThreshold = pasteThreshold; }
+
+    public boolean isAutoContinue() { return autoContinue; }
+
+    public void setAutoContinue(boolean autoContinue) { this.autoContinue = autoContinue; }
 
     public boolean isPaused() { return paused; }
 

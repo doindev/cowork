@@ -88,7 +88,7 @@ public class ConversationService {
     @Transactional
     public Conversation updateSettings(UUID id, Conversation.VoteMode voteMode, Boolean userVotes,
                                        Integer maxAgentRounds, Conversation.Status status, Double budgetUsd,
-                                       Boolean paused, Integer pasteThreshold) {
+                                       Boolean paused, Integer pasteThreshold, Boolean autoContinue) {
         Conversation conversation = get(id);
         if (voteMode != null) {
             conversation.setVoteMode(voteMode);
@@ -110,6 +110,9 @@ public class ConversationService {
         }
         if (pasteThreshold != null && pasteThreshold >= 0) {
             conversation.setPasteThreshold(pasteThreshold);
+        }
+        if (autoContinue != null) {
+            conversation.setAutoContinue(autoContinue);
         }
         return conversations.save(conversation);
     }

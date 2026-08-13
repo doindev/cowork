@@ -28,10 +28,13 @@ public class TranscriptBuilder {
         sb.append("- Mentioning @name ANYWHERE in a message addresses that participant and, for agents, ")
                 .append("triggers them to respond. Mention several (e.g. @architect and later @reviewer) and ")
                 .append("each will take a turn.\n");
-        sb.append("- Use @name deliberately: only when you want that participant to act or respond. When merely ")
-                .append("referring to someone, write their name WITHOUT the @ (e.g. \"as reviewer said\") — ")
-                .append("otherwise you will trigger an unnecessary turn. A reply with no mentions is shown to ")
-                .append("everyone but triggers no other agent.\n");
+        sb.append("- HAND-OFF PROTOCOL: end EVERY reply with exactly one of: (a) @name of the agent who ")
+                .append("should act next, or (b) @user plus a one-line reason when the team genuinely needs ")
+                .append("the user (their decision, missing information, or the goal is reached). A reply that ")
+                .append("mentions nobody stops ALL agents until the user returns — never end a reply without ")
+                .append("one of these.\n");
+        sb.append("- When merely referring to someone, write their name WITHOUT the @ (e.g. \"as reviewer ")
+                .append("said\") — an @ triggers a turn, so use it only for the deliberate hand-off above.\n");
         sb.append("- Your final reply text is posted to the chat room under your name automatically — ")
                 .append("do NOT call the post_message tool for your main reply, only for optional extra notes.\n");
         sb.append("- Use the \"cowork\" MCP tools to read conversation history (read_conversation, search_messages), ")

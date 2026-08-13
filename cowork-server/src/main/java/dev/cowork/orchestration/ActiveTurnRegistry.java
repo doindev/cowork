@@ -20,6 +20,8 @@ public class ActiveTurnRegistry {
     }
 
     private final Map<UUID, Map<UUID, ActiveTurn>> byConversation = new ConcurrentHashMap<>();
+    /** Participants whose running turn the user cancelled (conversationId:participantId). */
+    private final java.util.Set<String> cancelledByUser = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     public void register(UUID conversationId, ActiveTurn turn) {
         byConversation.computeIfAbsent(conversationId, k -> new ConcurrentHashMap<>())
@@ -49,6 +51,7 @@ public class ActiveTurnRegistry {
             return false;
         }
         log.info("Cancelling turn of '{}' in conversation {}", turn.agentName(), conversationId);
+        cancelledByUser.add(conversationId + ":" + participantId);
         turn.process().descendants().forEach(ProcessHandle::destroyForcibly);
         turn.process().destroyForcibly();
         try {
@@ -57,5 +60,10 @@ public class ActiveTurnRegistry {
             Thread.currentThread().interrupt();
         }
         return true;
+    }
+
+    /** True (once) when the given participant's last turn failure was a user cancellation. */
+    public boolean consumeCancelled(UUID conversationId, UUID participantId) {
+        return cancelledByUser.remove(conversationId + ":" + participantId);
     }
 }
