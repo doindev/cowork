@@ -48,6 +48,49 @@ interface MentionState {
 const HISTORY_LIMIT = 10
 
 const historyKey = (conversationId: string) => `cowork.inputHistory.${conversationId}`
+const draftKey = (conversationId: string) => `cowork.inputDraft.${conversationId}`
+
+interface PersistedDraft {
+  text: string
+  pastes: PendingPaste[]
+}
+
+/** Load the persisted unsent draft (text + paste placeholders) for a conversation. */
+function loadDraft(conversationId: string): PersistedDraft {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(draftKey(conversationId)) ?? 'null')
+    if (parsed !== null && typeof parsed === 'object' && typeof (parsed as PersistedDraft).text === 'string') {
+      const raw = (parsed as PersistedDraft).pastes
+      const pastes = Array.isArray(raw)
+        ? raw.filter(
+            (p): p is PendingPaste =>
+              p != null &&
+              typeof p.id === 'number' &&
+              typeof p.token === 'string' &&
+              typeof p.text === 'string',
+          )
+        : []
+      return { text: (parsed as PersistedDraft).text, pastes }
+    }
+  } catch {
+    /* fall through to an empty draft */
+  }
+  return { text: '', pastes: [] }
+}
+
+/** Persist the draft; pastes whose token was deleted from the text are dropped. */
+function saveDraft(conversationId: string, text: string, pastes: PendingPaste[]): void {
+  try {
+    const live = pastes.filter((p) => text.includes(p.token))
+    if (text === '' && live.length === 0) {
+      localStorage.removeItem(draftKey(conversationId))
+    } else {
+      localStorage.setItem(draftKey(conversationId), JSON.stringify({ text, pastes: live }))
+    }
+  } catch {
+    /* quota/serialization issues just lose persistence, not the draft */
+  }
+}
 
 /** Load the persisted submitted-message history for a conversation. */
 function loadHistory(conversationId: string): string[] {
@@ -91,11 +134,21 @@ export default function MessageInput({ conversationId, participants, disabled, p
   const [belowDraft, setBelowDraft] = useState(false)
   const draftRef = useRef('')
 
-  // Each conversation has its own persisted history.
+  // Each conversation has its own persisted history and unsent draft.
   useEffect(() => {
     setHistory(loadHistory(conversationId))
+    const draft = loadDraft(conversationId)
+    setText(draft.text)
+    draftRef.current = draft.text
+    setPastes(draft.pastes)
+    // New paste tokens must not collide with restored ones.
+    pasteSeq.current = draft.pastes.reduce((max, p) => Math.max(max, p.id), 0)
+    setPending([])
+    setConfirmPaste(null)
     setNavIndex(null)
     setBelowDraft(false)
+    setMention(null)
+    requestAnimationFrame(autosize)
   }, [conversationId])
 
   const names = useMemo(
@@ -164,13 +217,15 @@ export default function MessageInput({ conversationId, participants, disabled, p
     const id = ++pasteSeq.current
     const lines = pasted.split('\n').length
     const token = `[pasted #${id}: ${lines.toLocaleString()} lines, ${pasted.length.toLocaleString()} chars]`
-    setPastes((p) => [...p, { id, token, text: pasted }])
+    const nextPastes = [...pastes, { id, token, text: pasted }]
+    setPastes(nextPastes)
     const el = textareaRef.current
     const caret = el?.selectionStart ?? text.length
     const caretEnd = el?.selectionEnd ?? caret
     const nextValue = text.slice(0, caret) + token + text.slice(caretEnd)
     setText(nextValue)
     draftRef.current = nextValue
+    saveDraft(conversationId, nextValue, nextPastes)
     setNavIndex(null)
     setBelowDraft(false)
     const nextCaret = caret + token.length
@@ -243,6 +298,7 @@ export default function MessageInput({ conversationId, participants, disabled, p
         setPending([])
         setPastes([])
         setConfirmPaste(null)
+        saveDraft(conversationId, '', [])
         requestAnimationFrame(autosize)
         onSent?.()
       },
@@ -447,6 +503,7 @@ export default function MessageInput({ conversationId, participants, disabled, p
             setText(e.target.value)
             // Any edit becomes the live draft — the one unsubmitted entry in history.
             draftRef.current = e.target.value
+            saveDraft(conversationId, e.target.value, pastes)
             if (navIndex !== null) setNavIndex(null)
             if (belowDraft) setBelowDraft(false)
             autosize()
