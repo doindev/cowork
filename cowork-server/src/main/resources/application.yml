@@ -42,7 +42,8 @@ cowork:
   workspaces-dir: ../workspaces
   cli:
     max-concurrent: 4
-    # Long implementation turns routinely exceed 5 minutes; retries get double this.
-    turn-timeout-seconds: 900
+    # Default per-turn timeout; agents can override it with a turn-timeout-seconds
+    # entry in their options frontmatter. Retries get double.
+    turn-timeout-seconds: 300
   mcp:
     base-url: http://localhost:8090/mcp

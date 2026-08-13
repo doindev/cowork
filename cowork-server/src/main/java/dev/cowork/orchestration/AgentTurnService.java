@@ -138,6 +138,7 @@ public class AgentTurnService {
         }
         try {
             String token = tokens.issueToken(participant);
+            Map<String, Object> options = parseOptions(agent.getOptions());
             TurnRequest request = new TurnRequest(
                     agent.getName(),
                     prompt,
@@ -148,8 +149,8 @@ public class AgentTurnService {
                     properties.mcp().baseUrl(),
                     token,
                     conversation.getPhase() == Conversation.Phase.IMPLEMENTATION,
-                    parseOptions(agent.getOptions()),
-                    Duration.ofSeconds(properties.cli().turnTimeoutSeconds() * (retry ? 2L : 1L)));
+                    options,
+                    turnTimeout(options, retry));
 
             TurnListener listener = new TurnListener() {
                 @Override
@@ -259,6 +260,27 @@ public class AgentTurnService {
             throw new IllegalStateException("Cannot create working directory " + dir, e);
         }
         return dir;
+    }
+
+    /**
+     * The turn timeout: the agent's {@code turn-timeout-seconds} option when set,
+     * else the global default. Retries get double, since a timed-out turn is usually
+     * long-running rather than stuck.
+     */
+    private Duration turnTimeout(Map<String, Object> options, boolean retry) {
+        int seconds = properties.cli().turnTimeoutSeconds();
+        Object override = options.get("turn-timeout-seconds");
+        if (override != null) {
+            try {
+                int v = Integer.parseInt(override.toString().trim());
+                if (v > 0) {
+                    seconds = v;
+                }
+            } catch (NumberFormatException e) {
+                log.warn("Ignoring non-numeric turn-timeout-seconds option: {}", override);
+            }
+        }
+        return Duration.ofSeconds(seconds * (retry ? 2L : 1L));
     }
 
     @SuppressWarnings("unchecked")
