@@ -26,6 +26,8 @@ public class Participant implements UuidAssignable {
     private Instant lastSeenAt;
     /** When true, the next turn starts a fresh CLI session with a recovery prompt. */
     private boolean sessionResetRequested;
+    /** Turns taken on the current CLI session (drives optional auto-rotation). */
+    private int sessionTurnCount;
 
     @Override
     public UUID getId() { return id; }
@@ -72,4 +74,8 @@ public class Participant implements UuidAssignable {
     public boolean isSessionResetRequested() { return sessionResetRequested; }
 
     public void setSessionResetRequested(boolean sessionResetRequested) { this.sessionResetRequested = sessionResetRequested; }
+
+    public int getSessionTurnCount() { return sessionTurnCount; }
+
+    public void setSessionTurnCount(int sessionTurnCount) { this.sessionTurnCount = sessionTurnCount; }
 }

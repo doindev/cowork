@@ -34,8 +34,9 @@ public class AgentAssistService {
             alphanumeric/_/- only), cli (required: claude | codex | copilot), model (optional), \
             description (optional one-liner), options (optional map, e.g. permission-mode, \
             turn-timeout-seconds to give slow agents more than the default 300s per turn, \
-            effort: low|medium|high|xhigh|max to set the claude CLI thinking level, or \
-            autocompact: auto|100000-1000000 to auto-compact long claude sessions). \
+            effort: low|medium|high|xhigh|max to set the claude CLI thinking level, \
+            autocompact: auto|100000-1000000 to auto-compact long claude sessions, or \
+            max-session-turns: N to auto-refresh the agent's session every N turns, 0 = off). \
             After the frontmatter comes the persona: the system prompt defining the agent's \
             specialty, working style, and collaboration behavior in the team chat room.
 

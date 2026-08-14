@@ -98,6 +98,24 @@ public class AgentTurnService {
         static TurnOutcome of(TurnFailure failure, String detail) { return new TurnOutcome(null, failure, detail); }
     }
 
+    /** The agent's max-session-turns option (auto session rotation); 0 = disabled. */
+    public int maxSessionTurns(Participant participant) {
+        AgentDef agent = agents.findById(participant.getAgentId()).orElse(null);
+        if (agent == null) {
+            return 0;
+        }
+        Object value = parseOptions(agent.getOptions()).get("max-session-turns");
+        if (value == null) {
+            return 0;
+        }
+        try {
+            return Math.max(0, Integer.parseInt(value.toString().trim()));
+        } catch (NumberFormatException e) {
+            log.warn("Ignoring invalid max-session-turns option '{}'", value);
+            return 0;
+        }
+    }
+
     /** Stateless CLIs (no session resume) need the full history each turn, not a delta. */
     public boolean isStateless(Participant participant) {
         return agents.findById(participant.getAgentId())

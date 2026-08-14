@@ -79,7 +79,7 @@ Open http://localhost:8090. For frontend development: `cd cowork-frontend && npm
 name: mydesigner
 cli: claude          # claude | codex | copilot
 model: claude-sonnet-4-5   # optional
-options: { permission-mode: acceptEdits, turn-timeout-seconds: 900, effort: high, autocompact: auto }   # optional; timeout defaults to 300s, effort/autocompact (claude) to the CLI defaults
+options: { permission-mode: acceptEdits, turn-timeout-seconds: 900, effort: high, autocompact: auto, max-session-turns: 40 }   # all optional; timeout defaults to 300s, max-session-turns to 0 (no auto-rotation)
 description: UX-focused designer
 ---
 You are "mydesigner", a UX-focused designer... (persona / system prompt)

@@ -121,6 +121,10 @@ public class ConversationOrchestrator {
             boolean freshSession = !stateless && participant.getCliSessionId() == null
                     && messageRepository.findLastSentAt(conversationId, participant.getId()) != null;
             boolean recovery = stateless || freshSession;
+            // Optional auto-rotation: warn on the session's final turn, then refresh.
+            int maxSessionTurns = stateless ? 0 : turnService.maxSessionTurns(participant);
+            int turnNumber = (freshSession ? 0 : participant.getSessionTurnCount()) + 1;
+            boolean lastSessionTurn = maxSessionTurns > 0 && turnNumber >= maxSessionTurns;
 
             List<Message> shown;
             boolean olderOmitted = false;
@@ -145,15 +149,30 @@ public class ConversationOrchestrator {
             if (job.nudge() != null) {
                 prompt = prompt + "\n[COORDINATOR]\n" + job.nudge() + "\n";
             }
+            if (lastSessionTurn) {
+                prompt = prompt + "\n[COORDINATOR]\nThis is the LAST turn on your current session "
+                        + "(max-session-turns: " + maxSessionTurns + ") — it will be refreshed before "
+                        + "your next turn. Make sure agent-notes/" + participant.getDisplayName()
+                        + ".md is fully current before you end this reply.\n";
+            }
 
             AgentTurnService.TurnOutcome outcome =
                     turnService.execute(conversation, participant, prompt, job.round(), job.retried());
 
-            // Advance the persisted cursor only on success so a retried turn re-sends the
-            // same context. Re-fetch first: the agent may have set flags mid-turn via MCP.
-            if (outcome.failure() == AgentTurnService.TurnFailure.NONE && !shown.isEmpty()) {
+            // Advance the persisted cursor and turn counter only on success so a retried
+            // turn re-sends the same context. Re-fetch first: the agent may have set
+            // flags mid-turn via MCP.
+            if (outcome.failure() == AgentTurnService.TurnFailure.NONE) {
                 participants.findById(participant.getId()).ifPresent(p -> {
-                    p.setLastSeenAt(shown.getLast().createdAt());
+                    if (!shown.isEmpty()) {
+                        p.setLastSeenAt(shown.getLast().createdAt());
+                    }
+                    p.setSessionTurnCount(turnNumber);
+                    if (lastSessionTurn && !p.isSessionResetRequested()) {
+                        log.info("Auto-rotating session of '{}' in conversation {} after {} turns",
+                                participant.getDisplayName(), conversationId, turnNumber);
+                        p.setSessionResetRequested(true);
+                    }
                     participants.save(p);
                 });
             }

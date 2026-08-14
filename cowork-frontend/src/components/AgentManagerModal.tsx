@@ -105,6 +105,11 @@ const OPTION_VALUE_OPTIONS: Record<string, CompletionOption[]> = {
     { value: '150000', hint: 'compact at 150k tokens' },
     { value: '300000', hint: 'compact at 300k tokens' },
   ],
+  'max-session-turns': [
+    { value: '0', hint: 'default · auto-rotation off' },
+    { value: '20', hint: 'fresh session every 20 turns' },
+    { value: '40', hint: 'fresh session every 40 turns' },
+  ],
 }
 
 // Key completions inside `options: { … }`; the inserted `key: ` is then
@@ -114,6 +119,7 @@ const OPTION_KEY_OPTIONS: CompletionOption[] = [
   { value: 'permission-mode: ', hint: 'claude tool-permission handling' },
   { value: 'turn-timeout-seconds: ', hint: 'per-turn timeout (default 300)' },
   { value: 'autocompact: ', hint: 'claude auto-compact window (auto or 100k–1M)' },
+  { value: 'max-session-turns: ', hint: 'auto-refresh the session after N turns (0 = off)' },
   { value: 'sandbox: ', hint: 'codex sandbox mode' },
 ]
 
