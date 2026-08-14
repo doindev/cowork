@@ -139,6 +139,7 @@ public class ConversationOrchestrator {
                 }
                 case CONFIG -> setIdle(conversationId, "agent-failed",
                         "Agent '" + name + "' is unavailable (" + outcome.detail() + ").");
+                case USAGE_LIMIT -> handleUsageLimit(conversation, outcome.detail());
                 case FAILED, BLANK -> {
                     if (!job.retried()) {
                         log.info("Retrying turn of '{}' in conversation {} once ({})",
@@ -178,6 +179,8 @@ public class ConversationOrchestrator {
     private final Map<UUID, UUID> correctedParticipant = new ConcurrentHashMap<>();
     /** Last published idle state per conversation ({@code reason}/{@code detail}). */
     private final Map<UUID, Map<String, String>> idleStates = new ConcurrentHashMap<>();
+    /** Pending auto-resume timers for conversations paused by a usage limit. */
+    private final Map<UUID, Thread> pendingAutoResume = new ConcurrentHashMap<>();
 
     public ConversationOrchestrator(ConversationRepository conversations, ParticipantRepository participants,
                                     MessageRepository messageRepository, MessageService messages,
@@ -414,6 +417,76 @@ public class ConversationOrchestrator {
         };
     }
 
+    /**
+     * The Claude subscription's usage window is exhausted. Retrying is pointless, so the
+     * conversation goes idle with a clear banner; when the CLI's error names the reset
+     * time (…"usage limit reached|<epoch>"), an auto-resume is scheduled just after it.
+     */
+    private void handleUsageLimit(Conversation conversation, String detail) {
+        UUID conversationId = conversation.getId();
+        Instant resetAt = parseUsageReset(detail);
+        boolean firstNotice = !"usage-limit".equals(
+                idleStates.getOrDefault(conversationId, Map.of()).get("reason"));
+        String when = resetAt == null ? null
+                : java.time.LocalTime.ofInstant(resetAt, java.time.ZoneId.systemDefault())
+                        .truncatedTo(java.time.temporal.ChronoUnit.MINUTES).toString();
+        if (firstNotice) {
+            messages.postSystem(conversationId, Message.Kind.SYSTEM,
+                    "Claude usage limit reached — agent turns are paused"
+                            + (when == null ? "" : " until about " + when) + ".", null);
+        }
+        boolean willAutoResume = conversation.isAutoContinue() && resetAt != null
+                && scheduleAutoResume(conversationId, resetAt);
+        setIdle(conversationId, "usage-limit",
+                "Claude usage limit reached — agents are paused"
+                        + (when == null ? "" : " until about " + when)
+                        + (willAutoResume ? " and will resume automatically." : ". Resume once your limit resets."));
+    }
+
+    /** Extracts the reset epoch from a usage-limit error like "…usage limit reached|1723600800". */
+    private static Instant parseUsageReset(String detail) {
+        if (detail == null) {
+            return null;
+        }
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\|(\\d{10,13})").matcher(detail);
+        if (!m.find()) {
+            return null;
+        }
+        long value = Long.parseLong(m.group(1));
+        return m.group(1).length() >= 13 ? Instant.ofEpochMilli(value) : Instant.ofEpochSecond(value);
+    }
+
+    /** Schedules a one-shot resume shortly after the usage window resets. False if unschedulable. */
+    private boolean scheduleAutoResume(UUID conversationId, Instant resetAt) {
+        Instant target = resetAt.plusSeconds(90); // small buffer past the reset
+        java.time.Duration wait = java.time.Duration.between(Instant.now(), target);
+        if (wait.isNegative() || wait.toHours() > 24) {
+            return false;
+        }
+        Thread existing = pendingAutoResume.get(conversationId);
+        if (existing != null && existing.isAlive()) {
+            return true;
+        }
+        Thread timer = Thread.ofVirtual().name("auto-resume-" + conversationId).start(() -> {
+            try {
+                Thread.sleep(wait.toMillis());
+            } catch (InterruptedException e) {
+                return;
+            }
+            pendingAutoResume.remove(conversationId);
+            Map<String, String> state = idleStates.get(conversationId);
+            if (state == null || !"usage-limit".equals(state.get("reason"))) {
+                return; // The user already resumed or moved on.
+            }
+            log.info("Usage window reset — auto-resuming conversation {}", conversationId);
+            messages.postSystem(conversationId, Message.Kind.SYSTEM,
+                    "Usage window reset — resuming agents.", null);
+            resume(conversationId);
+        });
+        pendingAutoResume.put(conversationId, timer);
+        return true;
+    }
+
     private boolean tryConsumeNudge(Conversation conversation) {
         if (!conversation.isAutoContinue() || conversation.isBudgetExhausted()) {
             return false;
@@ -519,5 +592,6 @@ public class ConversationOrchestrator {
     @PreDestroy
     void shutdown() {
         workers.values().forEach(Worker::stop);
+        pendingAutoResume.values().forEach(Thread::interrupt);
     }
 }

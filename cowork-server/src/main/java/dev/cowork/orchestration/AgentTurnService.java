@@ -83,6 +83,8 @@ public class AgentTurnService {
         CONFIG,
         /** The user cancelled the running turn. */
         CANCELLED,
+        /** The Claude subscription's usage limit is exhausted — retrying is pointless. */
+        USAGE_LIMIT,
         /** The CLI failed (crash, timeout, error) — worth one retry. */
         FAILED,
         /** The CLI succeeded but returned an empty reply — worth one retry. */
@@ -190,8 +192,13 @@ public class AgentTurnService {
                 log.info("Agent '{}' turn cancelled by the user", agent.getName());
                 return TurnOutcome.of(TurnFailure.CANCELLED, "cancelled by the user");
             }
-            log.warn("Agent '{}' turn failed: {}", agent.getName(), e.getMessage());
-            return TurnOutcome.of(TurnFailure.FAILED, e.getMessage());
+            String message = e.getMessage() == null ? "" : e.getMessage();
+            if (message.toLowerCase().contains("usage limit")) {
+                log.warn("Agent '{}' hit the Claude usage limit: {}", agent.getName(), message);
+                return TurnOutcome.of(TurnFailure.USAGE_LIMIT, message);
+            }
+            log.warn("Agent '{}' turn failed: {}", agent.getName(), message);
+            return TurnOutcome.of(TurnFailure.FAILED, message);
         } finally {
             activeTurns.unregister(conversation.getId(), participant.getId());
             cliSemaphore.release();
