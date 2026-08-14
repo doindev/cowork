@@ -32,8 +32,9 @@ public class AgentAssistService {
 
             File format: YAML frontmatter delimited by --- lines with keys: name (required, \
             alphanumeric/_/- only), cli (required: claude | codex | copilot), model (optional), \
-            description (optional one-liner), options (optional map, e.g. permission-mode, or \
-            turn-timeout-seconds to give slow agents more than the default 300s per turn). \
+            description (optional one-liner), options (optional map, e.g. permission-mode, \
+            turn-timeout-seconds to give slow agents more than the default 300s per turn, or \
+            effort: low|medium|high|xhigh|max to set the claude CLI thinking level). \
             After the frontmatter comes the persona: the system prompt defining the agent's \
             specialty, working style, and collaboration behavior in the team chat room.
 

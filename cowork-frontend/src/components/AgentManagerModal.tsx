@@ -73,6 +73,53 @@ const MODEL_OPTIONS: Record<string, CompletionOption[]> = {
   ],
 }
 
+// Value completions for keys inside the `options:` frontmatter map.
+const OPTION_VALUE_OPTIONS: Record<string, CompletionOption[]> = {
+  effort: [
+    { value: 'low', hint: 'minimal thinking · fastest' },
+    { value: 'medium', hint: 'balanced' },
+    { value: 'high', hint: 'more thinking' },
+    { value: 'xhigh', hint: 'deep thinking (Claude 5 / Opus 4.7+)' },
+    { value: 'max', hint: 'maximum thinking' },
+  ],
+  'permission-mode': [
+    { value: 'acceptEdits', hint: 'auto-accept file edits (default)' },
+    { value: 'auto', hint: 'auto-approve permitted tools' },
+    { value: 'dontAsk', hint: 'never prompt' },
+    { value: 'bypassPermissions', hint: 'skip all permission checks' },
+    { value: 'plan', hint: 'plan mode · no changes' },
+    { value: 'manual', hint: 'ask for everything' },
+  ],
+  'turn-timeout-seconds': [
+    { value: '300', hint: 'default · 5 minutes' },
+    { value: '900', hint: '15 minutes' },
+    { value: '1800', hint: '30 minutes' },
+  ],
+  sandbox: [
+    { value: 'workspace-write', hint: 'codex default · write inside the workspace' },
+    { value: 'read-only', hint: 'codex · no writes' },
+    { value: 'danger-full-access', hint: 'codex · unrestricted' },
+  ],
+}
+
+// Key completions inside `options: { … }`; the inserted `key: ` is then
+// value-completable with another Ctrl+Space.
+const OPTION_KEY_OPTIONS: CompletionOption[] = [
+  { value: 'effort: ', hint: 'claude thinking level (low…max)' },
+  { value: 'permission-mode: ', hint: 'claude tool-permission handling' },
+  { value: 'turn-timeout-seconds: ', hint: 'per-turn timeout (default 300)' },
+  { value: 'sandbox: ', hint: 'codex sandbox mode' },
+]
+
+// Field-name completions for bare lines between the frontmatter --- markers.
+const FRONTMATTER_KEY_OPTIONS: CompletionOption[] = [
+  { value: 'name: ', hint: 'required · agent name (alphanumeric/_/-)' },
+  { value: 'cli: ', hint: 'required · claude | codex | copilot' },
+  { value: 'model: ', hint: 'model id or alias' },
+  { value: 'options: { }', hint: 'CLI options map (effort, permission-mode, …)' },
+  { value: 'description: ', hint: 'one-line summary shown in lists' },
+]
+
 interface CompletionState {
   options: CompletionOption[]
   index: number
@@ -147,22 +194,54 @@ export default function AgentManagerModal({ onClose }: Props) {
     const lineEnd = lineEndIdx === -1 ? content.length : lineEndIdx
     const line = content.slice(lineStart, lineEnd)
 
+    const caretInLine = caret - lineStart
     const cliMatch = /^(\s*cli:\s*)(.*)$/.exec(line)
     const modelMatch = /^(\s*model:\s*)(.*)$/.exec(line)
     let all: CompletionOption[]
-    let prefixLen: number
-    let typed: string
+    let valueStart: number
+    let valueEnd: number
     if (cliMatch) {
       all = CLI_OPTIONS
-      prefixLen = cliMatch[1].length
-      typed = cliMatch[2].trim()
+      valueStart = cliMatch[1].length
+      valueEnd = line.length
     } else if (modelMatch) {
       all = modelOptionsFor(currentCli ?? '')
-      prefixLen = modelMatch[1].length
-      typed = modelMatch[2].trim()
+      valueStart = modelMatch[1].length
+      valueEnd = line.length
+    } else if (/^\s*options:/.test(line)) {
+      // Inside the options map: complete the VALUE of the key just before the caret
+      // (`options: { effort: hi█ }`), or the KEY name itself when the caret sits in a
+      // fresh segment after `{` or `,` (`options: { █` / `options: { effort: high, █`).
+      const before = line.slice(0, caretInLine)
+      const keyMatch = /([A-Za-z][A-Za-z0-9-]*)\s*:\s*([^,{}]*)$/.exec(before)
+      const values = keyMatch ? OPTION_VALUE_OPTIONS[keyMatch[1]] : undefined
+      if (keyMatch && values) {
+        all = values
+        valueStart = caretInLine - keyMatch[2].length
+        valueEnd = caretInLine
+        while (valueEnd < line.length && line[valueEnd] !== ',' && line[valueEnd] !== '}') valueEnd++
+        while (valueEnd > valueStart && line[valueEnd - 1] === ' ') valueEnd--
+      } else {
+        const segMatch = /[{,]\s*([A-Za-z0-9-]*)$/.exec(before)
+        if (!segMatch) return
+        all = OPTION_KEY_OPTIONS
+        valueStart = caretInLine - segMatch[1].length
+        valueEnd = caretInLine
+        while (valueEnd < line.length && /[A-Za-z0-9-]/.test(line[valueEnd])) valueEnd++
+      }
     } else {
-      return
+      // A bare (or partially typed) line between the --- markers completes the
+      // frontmatter field name itself.
+      const fmEnd = content.startsWith('---') ? content.indexOf('\n---', 3) : -1
+      const inFrontmatter = fmEnd !== -1 && lineStart >= 4 && lineStart <= fmEnd
+      const bareMatch = /^\s*([A-Za-z0-9-]*)$/.exec(line.slice(0, caretInLine))
+      if (!inFrontmatter || !bareMatch) return
+      all = FRONTMATTER_KEY_OPTIONS
+      valueStart = caretInLine - bareMatch[1].length
+      valueEnd = caretInLine
+      while (valueEnd < line.length && /[A-Za-z0-9-]/.test(line[valueEnd])) valueEnd++
     }
+    const typed = line.slice(valueStart, valueEnd).trim()
     const filtered = all.filter((o) => o.value.toLowerCase().startsWith(typed.toLowerCase()))
     // No match, or the value is already a complete option → the user wants to switch: show all.
     const options =
@@ -180,9 +259,9 @@ export default function AgentManagerModal({ onClose }: Props) {
       options,
       index: 0,
       top: ta.offsetTop + padTop + (row + 1) * lineH - ta.scrollTop,
-      left: ta.offsetLeft + padLeft + prefixLen * charW - ta.scrollLeft,
-      replaceStart: lineStart + prefixLen,
-      replaceEnd: lineEnd,
+      left: ta.offsetLeft + padLeft + valueStart * charW - ta.scrollLeft,
+      replaceStart: lineStart + valueStart,
+      replaceEnd: lineStart + valueEnd,
     })
   }
 

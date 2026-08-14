@@ -169,6 +169,16 @@ public class ClaudeCodeRunner implements CliAgentRunner {
                 cmd.add("--model");
                 cmd.add(request.model());
             }
+            Object effort = request.option("effort");
+            if (effort != null) {
+                String level = effort.toString().trim().toLowerCase();
+                if (level.matches("low|medium|high|xhigh|max")) {
+                    cmd.add("--effort");
+                    cmd.add(level);
+                } else {
+                    log.warn("Ignoring invalid effort option '{}' (valid: low|medium|high|xhigh|max)", effort);
+                }
+            }
             if (request.sessionId() != null && !request.sessionId().isBlank()) {
                 cmd.add("--resume");
                 cmd.add(request.sessionId());
