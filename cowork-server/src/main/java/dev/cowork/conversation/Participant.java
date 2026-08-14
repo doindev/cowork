@@ -22,6 +22,10 @@ public class Participant implements UuidAssignable {
     private String cliSessionId;
     private boolean active = true;
     private Instant joinedAt;
+    /** Timestamp of the newest message this agent has been shown (delta cursor). */
+    private Instant lastSeenAt;
+    /** When true, the next turn starts a fresh CLI session with a recovery prompt. */
+    private boolean sessionResetRequested;
 
     @Override
     public UUID getId() { return id; }
@@ -60,4 +64,12 @@ public class Participant implements UuidAssignable {
     public Instant getJoinedAt() { return joinedAt; }
 
     public void setJoinedAt(Instant joinedAt) { this.joinedAt = joinedAt; }
+
+    public Instant getLastSeenAt() { return lastSeenAt; }
+
+    public void setLastSeenAt(Instant lastSeenAt) { this.lastSeenAt = lastSeenAt; }
+
+    public boolean isSessionResetRequested() { return sessionResetRequested; }
+
+    public void setSessionResetRequested(boolean sessionResetRequested) { this.sessionResetRequested = sessionResetRequested; }
 }

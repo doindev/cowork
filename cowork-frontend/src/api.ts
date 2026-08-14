@@ -444,3 +444,13 @@ export interface IdleStateView {
 export function getIdleState(conversationId: string): Promise<IdleStateView> {
   return http(`/conversations/${conversationId}/idle-state`)
 }
+
+/** Give an agent a fresh CLI session; it recovers from its notes on its next turn. */
+export function refreshAgentSession(
+  conversationId: string,
+  participantId: string,
+): Promise<{ requested: boolean }> {
+  return http(`/conversations/${conversationId}/participants/${participantId}/refresh-session`, {
+    method: 'POST',
+  })
+}

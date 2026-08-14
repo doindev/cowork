@@ -14,7 +14,8 @@ public class TranscriptBuilder {
 
     public String build(Conversation conversation, Participant agent, List<Participant> allParticipants,
                         List<Message> newMessages, int roundsRemaining, boolean hasImplementationDocs,
-                        String externalWorkspacePath) {
+                        String externalWorkspacePath, boolean sessionRecovery, boolean olderOmitted,
+                        boolean newerPending) {
         String roster = allParticipants.stream()
                 .filter(Participant::isActive)
                 .map(Participant::getDisplayName)
@@ -83,6 +84,10 @@ public class TranscriptBuilder {
                     .append("metadata only; fetch contents with the list_files/read_file MCP tools ")
                     .append("or read them straight from implementation_docs/.\n");
         }
+        sb.append("- PERSISTENT NOTES: maintain your working notes at agent-notes/")
+                .append(agent.getDisplayName()).append(".md in your working directory — current status, key ")
+                .append("decisions, important file locations, and next steps. Update it whenever you complete ")
+                .append("meaningful work: it is your memory across session resets and restarts.\n");
         sb.append("- STAY FOCUSED on the user's actual request: every discussion point, proposal, and task ")
                 .append("must trace back to something the user asked for. Do not invent requirements, expand ")
                 .append("scope, or gold-plate. If something is ambiguous or missing, ask the user instead of ")
@@ -91,12 +96,29 @@ public class TranscriptBuilder {
                 .append("drifts off the user's goal, say so and steer it back.\n");
         sb.append("- Keep replies concise; this is a chat room, not a document.\n");
 
-        sb.append("\n[NEW MESSAGES SINCE YOUR LAST TURN]\n");
+        if (sessionRecovery) {
+            sb.append("\n[SESSION RECOVERY]\n");
+            sb.append("You are starting a FRESH session (your previous one was reset — context refresh or ")
+                    .append("restart). Read your notes file agent-notes/").append(agent.getDisplayName())
+                    .append(".md FIRST, then review the recent messages below. Use read_conversation/")
+                    .append("search_messages for older history and list_tasks/list_proposals for what has ")
+                    .append("been decided. Do NOT redo completed work — trust your notes and the task list.\n");
+            sb.append("\n[RECENT CONVERSATION]\n");
+        } else {
+            sb.append("\n[NEW MESSAGES SINCE YOUR LAST TURN]\n");
+        }
         if (newMessages.isEmpty()) {
             sb.append("(none)\n");
         } else {
+            if (olderOmitted) {
+                sb.append("(older messages omitted — use read_conversation for more)\n");
+            }
             for (Message message : newMessages) {
                 sb.append('[').append(message.senderName()).append("]: ").append(message.content()).append('\n');
+            }
+            if (newerPending) {
+                sb.append("(more new messages arrived than fit here — they will follow next turn; ")
+                        .append("use read_conversation to see the latest now)\n");
             }
         }
         sb.append("\nRespond now as \"").append(agent.getDisplayName()).append("\".\n");

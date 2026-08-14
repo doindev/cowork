@@ -177,8 +177,12 @@ public class AgentTurnService {
             TurnResult result = runner.run(request, listener);
 
             if (result.sessionId() != null && !result.sessionId().equals(participant.getCliSessionId())) {
+                // Re-fetch before saving: the agent may have set flags (e.g. a session
+                // refresh request) mid-turn via MCP, which a stale save would erase.
+                Participant current = participants.findById(participant.getId()).orElse(participant);
+                current.setCliSessionId(result.sessionId());
+                participants.save(current);
                 participant.setCliSessionId(result.sessionId());
-                participants.save(participant);
             }
             commitWorkspaceChanges(conversation, agent.getName());
             recordSpend(conversation, result.costUsd());
@@ -263,6 +267,8 @@ public class AgentTurnService {
         }
         try {
             Files.createDirectories(dir);
+            // The per-agent persistent-notes folder referenced by the standing instructions.
+            Files.createDirectories(dir.resolve("agent-notes"));
         } catch (IOException e) {
             throw new IllegalStateException("Cannot create working directory " + dir, e);
         }

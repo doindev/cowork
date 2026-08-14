@@ -85,4 +85,18 @@ public class CoworkChatTools {
                 .map(p -> new ParticipantRecord(p.getDisplayName(), p.getKind().name(), p.isActive()))
                 .toList();
     }
+
+    @McpTool(name = "refresh_session", description = """
+            Call this when your context is filling up: your CLI session will be replaced \
+            with a FRESH one before your next turn, which recovers from your notes file \
+            plus a recap of recent messages. Update agent-notes/<your-name>.md with \
+            everything you need to remember BEFORE ending the current reply.""")
+    public String refreshSession() {
+        Participant caller = McpCallerContext.require();
+        Participant current = participants.findById(caller.getId()).orElse(caller);
+        current.setSessionResetRequested(true);
+        participants.save(current);
+        return "Acknowledged: your next turn starts a fresh session. Make sure agent-notes/"
+                + caller.getDisplayName() + ".md is up to date before you finish this reply.";
+    }
 }

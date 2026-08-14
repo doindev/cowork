@@ -100,6 +100,11 @@ const OPTION_VALUE_OPTIONS: Record<string, CompletionOption[]> = {
     { value: 'read-only', hint: 'codex · no writes' },
     { value: 'danger-full-access', hint: 'codex · unrestricted' },
   ],
+  autocompact: [
+    { value: 'auto', hint: 'claude decides when to compact' },
+    { value: '150000', hint: 'compact at 150k tokens' },
+    { value: '300000', hint: 'compact at 300k tokens' },
+  ],
 }
 
 // Key completions inside `options: { … }`; the inserted `key: ` is then
@@ -108,6 +113,7 @@ const OPTION_KEY_OPTIONS: CompletionOption[] = [
   { value: 'effort: ', hint: 'claude thinking level (low…max)' },
   { value: 'permission-mode: ', hint: 'claude tool-permission handling' },
   { value: 'turn-timeout-seconds: ', hint: 'per-turn timeout (default 300)' },
+  { value: 'autocompact: ', hint: 'claude auto-compact window (auto or 100k–1M)' },
   { value: 'sandbox: ', hint: 'codex sandbox mode' },
 ]
 

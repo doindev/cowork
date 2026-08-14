@@ -52,6 +52,10 @@ public class ConversationOrchestrator {
 
     /** Max automatic turns (corrective re-prompts, vote/goal nudges) per user message. */
     private static final int MAX_AUTO_NUDGES = 3;
+    /** Max delta messages per turn; overflow is flagged and delivered next turn. */
+    private static final int DELTA_LIMIT = 200;
+    /** Recent messages included when a session starts fresh (recovery/stateless recap). */
+    private static final int RECAP_LIMIT = 100;
 
     private record TurnJob(UUID participantId, int round, String nudge, boolean retried) {
 
@@ -65,7 +69,6 @@ public class ConversationOrchestrator {
         private final UUID conversationId;
         private final LinkedBlockingQueue<TurnJob> queue = new LinkedBlockingQueue<>();
         private final Set<UUID> queuedParticipants = new CopyOnWriteArraySet<>();
-        private final Map<UUID, Instant> lastSeen = new ConcurrentHashMap<>();
         private final Thread thread;
 
         Worker(UUID conversationId) {
@@ -104,14 +107,41 @@ public class ConversationOrchestrator {
                     || conversation.isPaused()) {
                 return;
             }
+            // Consume a pending session refresh: this turn starts a fresh CLI session.
+            if (participant.isSessionResetRequested()) {
+                log.info("Refreshing CLI session of '{}' in conversation {}",
+                        participant.getDisplayName(), conversationId);
+                participant.setCliSessionId(null);
+                participant.setSessionResetRequested(false);
+                participants.save(participant);
+            }
             boolean stateless = turnService.isStateless(participant);
-            Instant since = stateless ? Instant.EPOCH : lastSeen.getOrDefault(participant.getId(), Instant.EPOCH);
-            List<Message> delta = messageRepository.findSince(conversationId, since, 200);
+            // A fresh session for an agent that has already worked here (reset or lost
+            // session) recovers via its notes plus a recent recap instead of a delta.
+            boolean freshSession = !stateless && participant.getCliSessionId() == null
+                    && messageRepository.findLastSentAt(conversationId, participant.getId()) != null;
+            boolean recovery = stateless || freshSession;
+
+            List<Message> shown;
+            boolean olderOmitted = false;
+            boolean newerPending = false;
+            if (recovery) {
+                List<Message> recent = messageRepository.findRecent(conversationId, null, RECAP_LIMIT + 1);
+                olderOmitted = recent.size() > RECAP_LIMIT;
+                shown = new ArrayList<>(recent.subList(0, Math.min(recent.size(), RECAP_LIMIT)));
+                java.util.Collections.reverse(shown); // newest-first → chronological
+            } else {
+                Instant since = resolveSince(participant);
+                List<Message> delta = messageRepository.findSince(conversationId, since, DELTA_LIMIT + 1);
+                newerPending = delta.size() > DELTA_LIMIT;
+                shown = newerPending ? delta.subList(0, DELTA_LIMIT) : delta;
+            }
 
             List<Participant> roster = participants.findByConversationId(conversationId);
             int roundsRemaining = conversation.getMaxAgentRounds() - job.round();
-            String prompt = transcriptBuilder.build(conversation, participant, roster, delta, roundsRemaining,
-                    hasImplementationDocs(conversation), externalWorkspacePath(conversation));
+            String prompt = transcriptBuilder.build(conversation, participant, roster, shown, roundsRemaining,
+                    hasImplementationDocs(conversation), externalWorkspacePath(conversation),
+                    recovery, olderOmitted, newerPending);
             if (job.nudge() != null) {
                 prompt = prompt + "\n[COORDINATOR]\n" + job.nudge() + "\n";
             }
@@ -119,11 +149,24 @@ public class ConversationOrchestrator {
             AgentTurnService.TurnOutcome outcome =
                     turnService.execute(conversation, participant, prompt, job.round(), job.retried());
 
-            // Advance the delta cursor only on success so a retried turn re-sends the same context.
-            if (!stateless && outcome.failure() == AgentTurnService.TurnFailure.NONE) {
-                lastSeen.put(participant.getId(), delta.isEmpty() ? since : delta.getLast().createdAt());
+            // Advance the persisted cursor only on success so a retried turn re-sends the
+            // same context. Re-fetch first: the agent may have set flags mid-turn via MCP.
+            if (outcome.failure() == AgentTurnService.TurnFailure.NONE && !shown.isEmpty()) {
+                participants.findById(participant.getId()).ifPresent(p -> {
+                    p.setLastSeenAt(shown.getLast().createdAt());
+                    participants.save(p);
+                });
             }
             handleOutcome(conversation, participant, job, outcome);
+        }
+
+        /** The delta cursor: persisted value, else the agent's own last message (pre-migration rows). */
+        private Instant resolveSince(Participant participant) {
+            if (participant.getLastSeenAt() != null) {
+                return participant.getLastSeenAt();
+            }
+            Instant lastSent = messageRepository.findLastSentAt(conversationId, participant.getId());
+            return lastSent != null ? lastSent : Instant.EPOCH;
         }
 
         private void handleOutcome(Conversation conversation, Participant participant, TurnJob job,
@@ -321,6 +364,24 @@ public class ConversationOrchestrator {
                 }
             }
         }
+    }
+
+    /**
+     * Marks an agent participant of the conversation for a fresh CLI session (user-initiated).
+     * Returns false when the participant is unknown, inactive, or not an agent.
+     */
+    public boolean requestSessionRefresh(UUID conversationId, UUID participantId) {
+        return participants.findById(participantId)
+                .filter(p -> conversationId.equals(p.getConversationId()))
+                .filter(p -> p.getKind() == Participant.Kind.AGENT && p.isActive())
+                .map(p -> {
+                    p.setSessionResetRequested(true);
+                    participants.save(p);
+                    log.info("User requested a fresh session for '{}' in conversation {}",
+                            p.getDisplayName(), conversationId);
+                    return true;
+                })
+                .orElse(false);
     }
 
     /** Directly enqueues an agent turn (used for approved-task side effects). Round 0 = fresh budget. */

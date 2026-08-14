@@ -50,4 +50,11 @@ public class TurnController {
     public Map<String, String> idleState(@PathVariable UUID conversationId) {
         return orchestrator.idleState(conversationId);
     }
+
+    /** Marks an agent for a fresh CLI session; it recovers from its notes next turn. */
+    @PostMapping("/participants/{participantId}/refresh-session")
+    public Map<String, Boolean> refreshSession(@PathVariable UUID conversationId,
+                                               @PathVariable UUID participantId) {
+        return Map.of("requested", orchestrator.requestSessionRefresh(conversationId, participantId));
+    }
 }

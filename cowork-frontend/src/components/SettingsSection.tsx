@@ -4,6 +4,7 @@ import {
   addAgentToConversation,
   getAgents,
   patchConversation,
+  refreshAgentSession,
   type ConversationView,
   type PatchConversationRequest,
   type VoteMode,
@@ -55,6 +56,10 @@ export default function SettingsSection({ conversation, alwaysOpen = false }: Pr
       queryClient.invalidateQueries({ queryKey: ['conversation', conversation.id] })
       queryClient.invalidateQueries({ queryKey: ['conversations'] })
     },
+  })
+
+  const refreshSessionMutation = useMutation({
+    mutationFn: (participantId: string) => refreshAgentSession(conversation.id, participantId),
   })
 
   const commitRounds = (value: number) => {
@@ -212,6 +217,19 @@ export default function SettingsSection({ conversation, alwaysOpen = false }: Pr
                   <span className="badge badge-muted">
                     {p.kind === 'USER' ? 'user' : 'agent'}
                   </span>
+                  {p.kind === 'AGENT' && p.active && (
+                    <button
+                      className="icon-btn participant-refresh"
+                      title="Fresh session — agent recovers from its notes on its next turn"
+                      disabled={
+                        refreshSessionMutation.isPending &&
+                        refreshSessionMutation.variables === p.id
+                      }
+                      onClick={() => refreshSessionMutation.mutate(p.id)}
+                    >
+                      ↻
+                    </button>
+                  )}
                 </div>
               ))}
             </div>

@@ -179,6 +179,18 @@ public class ClaudeCodeRunner implements CliAgentRunner {
                     log.warn("Ignoring invalid effort option '{}' (valid: low|medium|high|xhigh|max)", effort);
                 }
             }
+            Object autocompact = request.option("autocompact");
+            if (autocompact != null) {
+                String value = autocompact.toString().trim().toLowerCase();
+                boolean validTokens = value.matches("\\d+")
+                        && Long.parseLong(value) >= 100_000 && Long.parseLong(value) <= 1_000_000;
+                if (value.equals("auto") || validTokens) {
+                    cmd.add("--autocompact");
+                    cmd.add(value);
+                } else {
+                    log.warn("Ignoring invalid autocompact option '{}' (valid: auto or 100000-1000000)", autocompact);
+                }
+            }
             if (request.sessionId() != null && !request.sessionId().isBlank()) {
                 cmd.add("--resume");
                 cmd.add(request.sessionId());

@@ -66,6 +66,22 @@ public class MessageRepository {
         return spec.query(ROW_MAPPER).list();
     }
 
+    /** The creation time of the given sender's newest message, or null if they never spoke. */
+    public Instant findLastSentAt(UUID conversationId, UUID senderParticipantId) {
+        return jdbc.sql("""
+                        SELECT max(created_at) FROM message
+                        WHERE conversation_id = :conversationId AND sender_participant_id = :senderId
+                        """)
+                .param("conversationId", conversationId)
+                .param("senderId", senderParticipantId)
+                .query((rs, i) -> {
+                    OffsetDateTime at = rs.getObject(1, OffsetDateTime.class);
+                    return at == null ? null : at.toInstant();
+                })
+                .optional()
+                .orElse(null);
+    }
+
     /** Messages after the given instant, oldest first — used to build delta transcripts. */
     public List<Message> findSince(UUID conversationId, Instant after, int limit) {
         return jdbc.sql("""
