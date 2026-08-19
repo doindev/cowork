@@ -47,8 +47,7 @@ const CLI_OPTIONS: CompletionOption[] = [
   { value: 'copilot', hint: 'GitHub Copilot CLI (experimental)' },
 ]
 
-// Hand-curated: the CLIs expose no model-listing API. The field stays free text,
-// so anything not listed here can still be typed manually.
+// Used only when live discovery is unavailable. The field remains free text.
 const MODEL_OPTIONS: Record<string, CompletionOption[]> = {
   claude: [
     { value: 'claude-fable-5', hint: 'Claude Fable 5 · most capable' },
@@ -62,24 +61,35 @@ const MODEL_OPTIONS: Record<string, CompletionOption[]> = {
     { value: 'haiku', hint: 'alias · latest Haiku' },
   ],
   codex: [
-    { value: 'gpt-5-codex', hint: 'GPT-5 Codex (default)' },
-    { value: 'gpt-5', hint: 'GPT-5' },
-    { value: 'gpt-5-mini', hint: 'GPT-5 mini · faster/cheaper' },
+    { value: 'gpt-5.6-sol', hint: 'GPT-5.6 Sol · most capable' },
+    { value: 'gpt-5.6-terra', hint: 'GPT-5.6 Terra · balanced' },
+    { value: 'gpt-5.6-luna', hint: 'GPT-5.6 Luna · fast/affordable' },
+    { value: 'gpt-5.5', hint: 'GPT-5.5' },
+    { value: 'gpt-5.4', hint: 'GPT-5.4' },
+    { value: 'gpt-5.3-codex', hint: 'GPT-5.3 Codex · coding specialized' },
   ],
   copilot: [
-    { value: 'gpt-5', hint: 'GPT-5' },
-    { value: 'claude-sonnet-4.5', hint: 'Claude Sonnet 4.5' },
-    { value: 'gemini-2.5-pro', hint: 'Gemini 2.5 Pro' },
+    { value: 'auto', hint: 'Copilot automatically selects a model' },
+    { value: 'claude-sonnet-4.6', hint: 'Claude Sonnet 4.6 · general-purpose coding' },
+    { value: 'gpt-5.4', hint: 'GPT-5.4 · complex reasoning' },
+    { value: 'claude-haiku-4.5', hint: 'Claude Haiku 4.5 · fast/lightweight' },
+    { value: 'gpt-5.3-codex', hint: 'GPT-5.3 Codex · code-focused' },
+    { value: 'gemini-3.1-pro-preview', hint: 'Gemini 3.1 Pro Preview · reasoning' },
+    { value: 'gemini-3.5-flash', hint: 'Gemini 3.5 Flash · fast' },
+    { value: 'gemini-3.6-flash', hint: 'Gemini 3.6 Flash · fast' },
+    { value: 'mai-code-1-flash', hint: 'MAI Code 1 Flash · fast/adaptive coding' },
   ],
 }
 
 // Value completions for keys inside the `options:` frontmatter map.
 const OPTION_VALUE_OPTIONS: Record<string, CompletionOption[]> = {
   effort: [
+    { value: 'none', hint: 'copilot · disable reasoning effort' },
+    { value: 'minimal', hint: 'codex · minimal reasoning' },
     { value: 'low', hint: 'minimal thinking · fastest' },
     { value: 'medium', hint: 'balanced' },
     { value: 'high', hint: 'more thinking' },
-    { value: 'xhigh', hint: 'deep thinking (Claude 5 / Opus 4.7+)' },
+    { value: 'xhigh', hint: 'deep thinking · Claude or Codex' },
     { value: 'max', hint: 'maximum thinking' },
   ],
   'permission-mode': [
@@ -100,6 +110,11 @@ const OPTION_VALUE_OPTIONS: Record<string, CompletionOption[]> = {
     { value: 'read-only', hint: 'codex · no writes' },
     { value: 'danger-full-access', hint: 'codex · unrestricted' },
   ],
+  'approval-policy': [
+    { value: 'never', hint: 'codex headless default · never pause for approval' },
+    { value: 'on-request', hint: 'ask when the model requests escalation' },
+    { value: 'untrusted', hint: 'ask before commands outside the trusted set' },
+  ],
   autocompact: [
     { value: 'auto', hint: 'claude decides when to compact' },
     { value: '150000', hint: 'compact at 150k tokens' },
@@ -110,6 +125,87 @@ const OPTION_VALUE_OPTIONS: Record<string, CompletionOption[]> = {
     { value: '20', hint: 'fresh session every 20 turns' },
     { value: '40', hint: 'fresh session every 40 turns' },
   ],
+  'fallback-cli': [
+    { value: 'claude', hint: 'fall back to the Claude CLI' },
+    { value: 'codex', hint: 'fall back to the Codex CLI' },
+    { value: 'copilot', hint: 'fall back to the Copilot CLI' },
+  ],
+  'fallback-effort': [
+    { value: 'low', hint: 'minimal thinking · fastest' },
+    { value: 'medium', hint: 'balanced' },
+    { value: 'high', hint: 'more thinking' },
+    { value: 'xhigh', hint: 'deep thinking' },
+  ],
+  context: [
+    { value: 'default', hint: 'copilot default context window' },
+    { value: 'long_context', hint: 'copilot long context window' },
+  ],
+  mode: [
+    { value: 'interactive', hint: 'copilot interactive agent mode' },
+    { value: 'plan', hint: 'copilot planning mode' },
+    { value: 'autopilot', hint: 'copilot autonomous continuation mode' },
+  ],
+  'log-level': [
+    { value: 'none', hint: 'disable copilot logs' },
+    { value: 'error', hint: 'errors only' },
+    { value: 'warning', hint: 'warnings and errors' },
+    { value: 'info', hint: 'informational logging' },
+    { value: 'debug', hint: 'debug logging' },
+    { value: 'all', hint: 'all copilot logs' },
+    { value: 'default', hint: 'copilot default logging' },
+  ],
+  stream: [
+    { value: 'on', hint: 'enable copilot streaming' },
+    { value: 'off', hint: 'disable copilot streaming' },
+  ],
+  'bash-env': [
+    { value: 'on', hint: 'enable BASH_ENV support' },
+    { value: 'off', hint: 'disable BASH_ENV support' },
+  ],
+}
+
+const BOOLEAN_OPTIONS: CompletionOption[] = [
+  { value: 'true', hint: 'enable this CLI flag' },
+  { value: 'false', hint: 'disable this CLI flag' },
+]
+
+for (const key of [
+  'oss',
+  'approve-for-me',
+  'strict-config',
+  'ephemeral',
+  'ignore-user-config',
+  'ignore-rules',
+  'dangerously-bypass-approvals-and-sandbox',
+  'dangerously-bypass-hook-trust',
+]) {
+  OPTION_VALUE_OPTIONS[key] = BOOLEAN_OPTIONS
+}
+
+for (const key of [
+  'allow-all',
+  'allow-all-paths',
+  'allow-all-tools',
+  'allow-all-urls',
+  'allow-all-mcp-server-instructions',
+  'autopilot',
+  'disable-builtin-mcps',
+  'disallow-temp-dir',
+  'enable-all-github-mcp-tools',
+  'enable-memory',
+  'enable-reasoning-summaries',
+  'experimental',
+  'no-auto-update',
+  'no-bash-env',
+  'no-custom-instructions',
+  'no-remote',
+  'no-remote-export',
+  'plain-diff',
+  'plan',
+  'screen-reader',
+  'yolo',
+]) {
+  OPTION_VALUE_OPTIONS[key] = BOOLEAN_OPTIONS
 }
 
 // Key completions inside `options: { … }`; the inserted `key: ` is then
@@ -121,6 +217,83 @@ const OPTION_KEY_OPTIONS: CompletionOption[] = [
   { value: 'autocompact: ', hint: 'claude auto-compact window (auto or 100k–1M)' },
   { value: 'max-session-turns: ', hint: 'auto-refresh the session after N turns (0 = off)' },
   { value: 'sandbox: ', hint: 'codex sandbox mode' },
+  { value: 'fallback-cli: ', hint: 'backup vendor CLI while the primary is usage-limited' },
+  { value: 'fallback-model: ', hint: 'backup model used with fallback-cli' },
+  { value: 'fallback-effort: ', hint: 'effort level for the fallback model' },
+]
+
+const CODEX_OPTION_KEY_OPTIONS: CompletionOption[] = [
+  { value: 'effort: ', hint: 'codex reasoning effort (minimal…xhigh)' },
+  { value: 'sandbox: ', hint: 'codex sandbox mode' },
+  { value: 'approval-policy: ', hint: 'codex command approval policy' },
+  { value: 'config: ', hint: 'codex config override(s), comma-separated' },
+  { value: 'enable: ', hint: 'codex feature(s), comma-separated' },
+  { value: 'disable: ', hint: 'codex feature(s), comma-separated' },
+  { value: 'image: ', hint: 'codex image path(s), comma-separated' },
+  { value: 'oss: ', hint: 'codex local open-source mode (true/false)' },
+  { value: 'local-provider: ', hint: 'codex local provider: lmstudio or ollama' },
+  { value: 'profile: ', hint: 'codex config profile' },
+  { value: 'approve-for-me: ', hint: 'codex automatic approval review (true/false)' },
+  { value: 'add-dir: ', hint: 'additional writable path(s), comma-separated' },
+  { value: 'strict-config: ', hint: 'reject unknown codex config (true/false)' },
+  { value: 'ephemeral: ', hint: 'do not persist codex session files (true/false)' },
+  { value: 'ignore-user-config: ', hint: 'ignore codex config.toml (true/false)' },
+  { value: 'ignore-rules: ', hint: 'ignore codex execpolicy rules (true/false)' },
+  { value: 'output-schema: ', hint: 'codex final-response JSON Schema path' },
+  {
+    value: 'dangerously-bypass-approvals-and-sandbox: ',
+    hint: 'codex unrestricted execution · dangerous',
+  },
+  { value: 'dangerously-bypass-hook-trust: ', hint: 'codex bypass hook trust · dangerous' },
+  { value: 'turn-timeout-seconds: ', hint: 'per-turn timeout' },
+  { value: 'max-session-turns: ', hint: 'start a fresh session after N turns' },
+  { value: 'fallback-cli: ', hint: 'backup vendor CLI while the primary is usage-limited' },
+  { value: 'fallback-model: ', hint: 'backup model used with fallback-cli' },
+  { value: 'fallback-effort: ', hint: 'effort level for the fallback model' },
+]
+
+const COPILOT_OPTION_KEY_OPTIONS: CompletionOption[] = [
+  { value: 'effort: ', hint: 'reasoning effort (none, minimal, low…max)' },
+  { value: 'context: ', hint: 'context window tier' },
+  { value: 'mode: ', hint: 'interactive, plan, or autopilot mode' },
+  { value: 'add-dir: ', hint: 'additional allowed path(s), comma-separated' },
+  { value: 'allow-tool: ', hint: 'pre-approved tool pattern(s), comma-separated' },
+  { value: 'deny-tool: ', hint: 'denied tool pattern(s), comma-separated' },
+  { value: 'available-tools: ', hint: 'limit available tools, comma-separated' },
+  { value: 'excluded-tools: ', hint: 'remove tools, comma-separated' },
+  { value: 'allow-url: ', hint: 'pre-approved URL/domain(s), comma-separated' },
+  { value: 'deny-url: ', hint: 'denied URL/domain(s), comma-separated' },
+  { value: 'allow-all: ', hint: 'allow all tools, paths, and URLs (dangerous)' },
+  { value: 'allow-all-paths: ', hint: 'disable path verification (dangerous)' },
+  { value: 'allow-all-tools: ', hint: 'approve every tool automatically' },
+  { value: 'allow-all-urls: ', hint: 'approve every URL automatically' },
+  { value: 'disallow-temp-dir: ', hint: 'block automatic temporary-directory access' },
+  { value: 'disable-builtin-mcps: ', hint: 'disable built-in MCP servers' },
+  { value: 'disable-mcp-server: ', hint: 'MCP server name(s), comma-separated' },
+  { value: 'allow-all-mcp-server-instructions: ', hint: 'include all MCP instructions' },
+  { value: 'enable-all-github-mcp-tools: ', hint: 'enable every GitHub MCP tool' },
+  { value: 'add-github-mcp-tool: ', hint: 'GitHub MCP tool(s), comma-separated' },
+  { value: 'add-github-mcp-toolset: ', hint: 'GitHub MCP toolset(s), comma-separated' },
+  { value: 'max-ai-credits: ', hint: 'soft AI-credit maximum per response' },
+  { value: 'max-autopilot-continues: ', hint: 'maximum autopilot continuations' },
+  { value: 'enable-memory: ', hint: 'enable memory in prompt mode' },
+  { value: 'enable-reasoning-summaries: ', hint: 'show OpenAI reasoning summaries' },
+  { value: 'experimental: ', hint: 'enable experimental Copilot features' },
+  { value: 'no-custom-instructions: ', hint: 'ignore AGENTS.md and related instructions' },
+  { value: 'no-auto-update: ', hint: 'disable automatic CLI updates' },
+  { value: 'no-remote: ', hint: 'disable remote session control' },
+  { value: 'no-remote-export: ', hint: 'disable remote session export' },
+  { value: 'log-level: ', hint: 'Copilot logging level' },
+  { value: 'stream: ', hint: 'streaming on/off' },
+  { value: 'bash-env: ', hint: 'BASH_ENV support on/off' },
+  { value: 'no-bash-env: ', hint: 'disable BASH_ENV support' },
+  { value: 'plain-diff: ', hint: 'disable rich diff rendering' },
+  { value: 'screen-reader: ', hint: 'enable screen-reader output' },
+  { value: 'autopilot: ', hint: 'start in autopilot mode' },
+  { value: 'plan: ', hint: 'start in plan mode' },
+  { value: 'yolo: ', hint: 'alias for allow-all (dangerous)' },
+  { value: 'secret-env-vars: ', hint: 'environment names to redact, comma-separated' },
+  { value: 'turn-timeout-seconds: ', hint: 'per-turn timeout' },
 ]
 
 // Field-name completions for bare lines between the frontmatter --- markers.
@@ -180,7 +353,8 @@ export default function AgentManagerModal({ onClose }: Props) {
 
   // Live model catalogs (provider APIs, when the server has credentials); the
   // curated MODEL_OPTIONS constants are the fallback. Cached for the session.
-  const currentCli = /^\s*cli:\s*(\w+)/m.exec(content)?.[1]?.toLowerCase() ?? null
+  const currentCli =
+    /^\s*cli:\s*["']?([a-z][a-z0-9-]*)["']?\s*$/im.exec(content)?.[1]?.toLowerCase() ?? null
   const liveModelsQuery = useQuery({
     queryKey: ['model-catalog', currentCli],
     queryFn: () => getModelCatalog(currentCli!),
@@ -236,7 +410,12 @@ export default function AgentManagerModal({ onClose }: Props) {
       } else {
         const segMatch = /[{,]\s*([A-Za-z0-9-]*)$/.exec(before)
         if (!segMatch) return
-        all = OPTION_KEY_OPTIONS
+        all =
+          currentCli === 'codex'
+            ? CODEX_OPTION_KEY_OPTIONS
+            : currentCli === 'copilot'
+              ? COPILOT_OPTION_KEY_OPTIONS
+              : OPTION_KEY_OPTIONS
         valueStart = caretInLine - segMatch[1].length
         valueEnd = caretInLine
         while (valueEnd < line.length && /[A-Za-z0-9-]/.test(line[valueEnd])) valueEnd++

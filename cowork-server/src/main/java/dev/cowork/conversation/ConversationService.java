@@ -57,6 +57,17 @@ public class ConversationService {
     public Participant addAgent(UUID conversationId, UUID agentId) {
         AgentDef agent = agents.findById(agentId)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown agent " + agentId));
+        Participant existing = participants.findByConversationId(conversationId).stream()
+                .filter(p -> agent.getId().equals(p.getAgentId()))
+                .findFirst().orElse(null);
+        if (existing != null) {
+            // Re-adding a removed agent reactivates it; its delta cursor catches it up.
+            if (!existing.isActive()) {
+                existing.setActive(true);
+                participants.save(existing);
+            }
+            return existing;
+        }
         Participant participant = new Participant();
         participant.setConversationId(conversationId);
         participant.setKind(Participant.Kind.AGENT);
@@ -133,13 +144,60 @@ public class ConversationService {
     }
 
     @Transactional
-    public void setParticipantActive(UUID conversationId, UUID participantId, boolean active) {
+    public Participant setParticipantActive(UUID conversationId, UUID participantId, boolean active) {
+        Participant participant = requireAgentParticipant(conversationId, participantId);
+        participant.setActive(active);
+        // A manual toggle overrides the phase scope until the next phase change.
+        participant.setPhaseOverride(true);
+        return participants.save(participant);
+    }
+
+    /** Sets a participant's phase scope, clears any manual override, and applies it now. */
+    @Transactional
+    public Participant setParticipantPhases(UUID conversationId, UUID participantId,
+                                            Participant.ActivePhases phases) {
+        Participant participant = requireAgentParticipant(conversationId, participantId);
+        Conversation conversation = get(conversationId);
+        participant.setActivePhases(phases);
+        participant.setPhaseOverride(false);
+        participant.setActive(phases.appliesTo(conversation.getPhase()));
+        return participants.save(participant);
+    }
+
+    /**
+     * On a phase switch: clears manual overrides and applies each agent's phase scope.
+     * Returns the participants whose active flag actually changed.
+     */
+    @Transactional
+    public List<Participant> applyPhaseScoping(UUID conversationId, Conversation.Phase newPhase) {
+        List<Participant> changed = new java.util.ArrayList<>();
+        for (Participant participant : participants.findByConversationId(conversationId)) {
+            if (participant.getKind() != Participant.Kind.AGENT) {
+                continue;
+            }
+            boolean target = participant.getActivePhases().appliesTo(newPhase);
+            if (participant.isActive() != target || participant.isPhaseOverride()) {
+                boolean activeChanged = participant.isActive() != target;
+                participant.setActive(target);
+                participant.setPhaseOverride(false);
+                participants.save(participant);
+                if (activeChanged) {
+                    changed.add(participant);
+                }
+            }
+        }
+        return changed;
+    }
+
+    private Participant requireAgentParticipant(UUID conversationId, UUID participantId) {
         Participant participant = participants.findById(participantId)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown participant " + participantId));
         if (!participant.getConversationId().equals(conversationId)) {
             throw new IllegalArgumentException("Participant does not belong to conversation");
         }
-        participant.setActive(active);
-        participants.save(participant);
+        if (participant.getKind() != Participant.Kind.AGENT) {
+            throw new IllegalArgumentException("Only agent participants can be removed or re-added");
+        }
+        return participant;
     }
 }

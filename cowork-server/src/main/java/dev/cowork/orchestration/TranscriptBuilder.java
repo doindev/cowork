@@ -12,6 +12,12 @@ import org.springframework.stereotype.Component;
 @Component
 public class TranscriptBuilder {
 
+    private final dev.cowork.skill.SkillService skills;
+
+    public TranscriptBuilder(dev.cowork.skill.SkillService skills) {
+        this.skills = skills;
+    }
+
     public String build(Conversation conversation, Participant agent, List<Participant> allParticipants,
                         List<Message> newMessages, int roundsRemaining, boolean hasImplementationDocs,
                         String externalWorkspacePath, boolean sessionRecovery, boolean olderOmitted,
@@ -40,8 +46,10 @@ public class TranscriptBuilder {
                 .append("do NOT call the post_message tool for your main reply, only for optional extra notes.\n");
         sb.append("- Use the \"cowork\" MCP tools to read conversation history (read_conversation, search_messages), ")
                 .append("create proposals (create_proposal) and vote on open proposals (cast_vote, list_proposals). ")
-                .append("All significant decisions — plan approval, task assignment, code-change suggestions — ")
-                .append("must go through proposals and votes.\n");
+                .append("MATERIAL decisions — plan approval, task assignment, architecture/technology choices, ")
+                .append("scope changes, anything irreversible — go through proposals and votes. Trivial, ")
+                .append("reversible implementation details do NOT need a proposal or discussion: decide, note it, ")
+                .append("move on. Do not discuss-by-proposal.\n");
         sb.append("- Decision semantics: a proposal that reaches ").append(conversation.getVoteMode())
                 .append(" approval is PASSED and is the binding team decision — the winning option that everyone ")
                 .append("now works from. A REJECTED proposal is off the table; raise a revised alternative instead ")
@@ -50,17 +58,18 @@ public class TranscriptBuilder {
                 .append(conversation.getVoteMode()).append(".\n");
         if (conversation.getPhase() == dev.cowork.conversation.Conversation.Phase.PLANNING) {
             sb.append("- PLANNING GOAL: produce a detailed implementation plan for the user's request that the ")
-                    .append("team agrees on (").append(conversation.getVoteMode()).append(" vote). Keep discussing ")
-                    .append("and settle every significant implementation detail — architecture, technology choices, ")
-                    .append("data model, interfaces, scope — through proposals and votes until the full plan is ")
-                    .append("agreed. When the plan is complete, raise a PLAN_APPROVAL proposal summarizing it; ")
+                    .append("team agrees on (").append(conversation.getVoteMode()).append(" vote). Settle the ")
+                    .append("significant implementation details — architecture, technology choices, data model, ")
+                    .append("interfaces, scope — efficiently: one focused pass per topic, do not revisit agreed ")
+                    .append("points. When the plan is complete, raise a PLAN_APPROVAL proposal summarizing it; ")
                     .append("if it passes, the user confirms the switch to implementation. Do not start writing ")
                     .append("application code during planning.\n");
         }
         if (conversation.getPhase() == dev.cowork.conversation.Conversation.Phase.IMPLEMENTATION) {
             sb.append("- Workspace changes you make are auto-committed under your name after each turn. ")
-                    .append("Review teammates' work with list_commits and get_commit_diff; raise review ")
-                    .append("feedback as CODE_CHANGE proposals referencing the commit hash.\n");
+                    .append("Code review is the designated reviewer's job, not a group activity: review ")
+                    .append("commits (list_commits, get_commit_diff) only when it is your role or you were ")
+                    .append("asked; raise findings as CODE_CHANGE proposals referencing the commit hash.\n");
         }
         if (conversation.hasRoundLimit()) {
             sb.append("- Agent-to-agent hand-off rounds remaining before control returns to the user: ")
@@ -94,7 +103,18 @@ public class TranscriptBuilder {
                 .append("assuming. State only what you can verify from the conversation, the workspace files, ")
                 .append("or tool results — if you are unsure, say so rather than guessing. If the discussion ")
                 .append("drifts off the user's goal, say so and steer it back.\n");
-        sb.append("- Keep replies concise; this is a chat room, not a document.\n");
+        sb.append("- OUTPUT CONTRACT: default reply is at most ~120 words plus any code or artifacts. ")
+                .append("No greetings, no pleasantries, no recaps of other agents' messages, no restating ")
+                .append("agreed plans or decisions. Dense technical prose; every sentence must carry new ")
+                .append("information. Expand only when the user explicitly asks for a detailed or verbose ")
+                .append("answer.\n");
+
+        for (dev.cowork.skill.SkillDef skill : skills.activeFor(conversation)) {
+            sb.append("\n[ACTIVE SKILL: ").append(skill.name()).append("]\n")
+                    .append("The user activated this protocol for the conversation — follow it in ")
+                    .append("addition to the standing instructions above.\n")
+                    .append(skill.body()).append('\n');
+        }
 
         if (sessionRecovery) {
             sb.append("\n[SESSION RECOVERY]\n");

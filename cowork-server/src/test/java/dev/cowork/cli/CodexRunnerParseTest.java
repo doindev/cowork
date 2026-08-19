@@ -65,4 +65,12 @@ class CodexRunnerParseTest {
         org.junit.jupiter.api.Assertions.assertTrue(activity.contains("npm test"));
         org.junit.jupiter.api.Assertions.assertTrue(activity.contains("src/App.tsx"));
     }
+
+    @Test
+    void recognizesMissingLocalRolloutSoTheTurnCanRestartFresh() {
+        var result = new ProcessExecutor.ExecResult(1, "",
+                "thread/resume failed: no rollout found for thread id abc", false);
+
+        org.junit.jupiter.api.Assertions.assertTrue(CodexRunner.missingRollout(result));
+    }
 }

@@ -75,6 +75,7 @@ public class CopilotRunner implements CliAgentRunner {
                 cmd.add("--model");
                 cmd.add(request.model());
             }
+            appendCopilotOptions(cmd, request);
 
             // Persona has no per-invocation flag; prepend it to the stdin prompt instead.
             String prompt = request.persona() == null || request.persona().isBlank()
@@ -100,6 +101,57 @@ public class CopilotRunner implements CliAgentRunner {
             throw new CliTurnException("Failed to run copilot: " + e.getMessage(), e);
         } finally {
             deleteRecursively(copilotHome);
+        }
+    }
+
+    static void appendCopilotOptions(List<String> cmd, TurnRequest request) {
+        appendValue(cmd, "--effort", request.option("effort"));
+        appendValue(cmd, "--context", request.option("context"));
+        appendValue(cmd, "--mode", request.option("mode"));
+        appendValue(cmd, "--log-level", request.option("log-level"));
+        appendValue(cmd, "--stream", request.option("stream"));
+        appendValue(cmd, "--bash-env", request.option("bash-env"));
+        appendValue(cmd, "--max-ai-credits", request.option("max-ai-credits"));
+        appendValue(cmd, "--max-autopilot-continues", request.option("max-autopilot-continues"));
+
+        for (String key : List.of("add-dir", "allow-tool", "deny-tool", "available-tools",
+                "excluded-tools", "allow-url", "deny-url", "disable-mcp-server",
+                "add-github-mcp-tool", "add-github-mcp-toolset", "secret-env-vars")) {
+            appendRepeated(cmd, "--" + key, request.option(key));
+        }
+        for (String key : List.of("allow-all", "allow-all-paths", "allow-all-tools",
+                "allow-all-urls", "allow-all-mcp-server-instructions", "autopilot",
+                "disable-builtin-mcps", "disallow-temp-dir", "enable-all-github-mcp-tools",
+                "enable-memory", "enable-reasoning-summaries", "experimental", "no-auto-update",
+                "no-bash-env", "no-custom-instructions", "no-remote", "no-remote-export",
+                "plain-diff", "plan", "screen-reader", "yolo")) {
+            appendFlag(cmd, "--" + key, request.option(key));
+        }
+    }
+
+    private static void appendValue(List<String> cmd, String flag, Object value) {
+        if (value != null && !value.toString().isBlank()) {
+            cmd.add(flag);
+            cmd.add(value.toString().trim());
+        }
+    }
+
+    private static void appendRepeated(List<String> cmd, String flag, Object value) {
+        if (value == null) {
+            return;
+        }
+        if (value instanceof Iterable<?> values) {
+            values.forEach(item -> appendValue(cmd, flag, item));
+            return;
+        }
+        for (String item : value.toString().split(",")) {
+            appendValue(cmd, flag, item);
+        }
+    }
+
+    private static void appendFlag(List<String> cmd, String flag, Object value) {
+        if (value != null && Boolean.parseBoolean(value.toString())) {
+            cmd.add(flag);
         }
     }
 

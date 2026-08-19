@@ -37,10 +37,15 @@ public class ConversationController {
     public record PostMessageRequest(@NotBlank String content) {
     }
 
-    public record ParticipantView(UUID id, String kind, UUID agentId, String displayName, boolean active) {
+    public record ParticipantUpdateRequest(Boolean active, String activePhases) {
+    }
+
+    public record ParticipantView(UUID id, String kind, UUID agentId, String displayName, boolean active,
+                                  String activePhases) {
 
         static ParticipantView of(Participant p) {
-            return new ParticipantView(p.getId(), p.getKind().name(), p.getAgentId(), p.getDisplayName(), p.isActive());
+            return new ParticipantView(p.getId(), p.getKind().name(), p.getAgentId(), p.getDisplayName(),
+                    p.isActive(), p.getActivePhases().name());
         }
     }
 
@@ -61,13 +66,19 @@ public class ConversationController {
     private final MessageService messages;
     private final SseHub sseHub;
     private final dev.cowork.project.ProjectService projectService;
+    private final dev.cowork.orchestration.ActiveTurnRegistry activeTurns;
+    private final dev.cowork.proposal.ProposalService proposals;
 
     public ConversationController(ConversationService service, MessageService messages, SseHub sseHub,
-                                  dev.cowork.project.ProjectService projectService) {
+                                  dev.cowork.project.ProjectService projectService,
+                                  dev.cowork.orchestration.ActiveTurnRegistry activeTurns,
+                                  dev.cowork.proposal.ProposalService proposals) {
         this.service = service;
         this.messages = messages;
         this.sseHub = sseHub;
         this.projectService = projectService;
+        this.activeTurns = activeTurns;
+        this.proposals = proposals;
     }
 
     @GetMapping
@@ -116,7 +127,56 @@ public class ConversationController {
 
     @PostMapping("/{id}/agents/{agentId}")
     public ParticipantView addAgent(@PathVariable UUID id, @PathVariable UUID agentId) {
-        return ParticipantView.of(service.addAgent(id, agentId));
+        boolean rejoining = service.participantsOf(id).stream()
+                .anyMatch(p -> agentId.equals(p.getAgentId()) && !p.isActive());
+        boolean alreadyActive = service.participantsOf(id).stream()
+                .anyMatch(p -> agentId.equals(p.getAgentId()) && p.isActive());
+        Participant participant = service.addAgent(id, agentId);
+        if (!alreadyActive) {
+            messages.postSystem(id, dev.cowork.message.Message.Kind.SYSTEM,
+                    "\"" + participant.getDisplayName() + "\" "
+                            + (rejoining ? "rejoined" : "joined")
+                            + " the conversation — added by the user.", null);
+        }
+        return ParticipantView.of(participant);
+    }
+
+    /**
+     * Removes ({@code active: false}) / re-adds ({@code active: true}) an agent participant,
+     * or sets its phase scope ({@code activePhases: ALL|PLANNING|IMPLEMENTATION}).
+     */
+    @PatchMapping("/{id}/participants/{participantId}")
+    public ParticipantView updateParticipant(@PathVariable UUID id, @PathVariable UUID participantId,
+                                             @RequestBody ParticipantUpdateRequest request) {
+        if (request.active() == null && request.activePhases() == null) {
+            throw new IllegalArgumentException("active or activePhases is required");
+        }
+        boolean wasActive = service.participantsOf(id).stream()
+                .anyMatch(p -> p.getId().equals(participantId) && p.isActive());
+        Participant participant;
+        if (request.activePhases() != null) {
+            Participant.ActivePhases phases;
+            try {
+                phases = Participant.ActivePhases.valueOf(request.activePhases().trim().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("activePhases must be ALL, PLANNING, or IMPLEMENTATION");
+            }
+            participant = service.setParticipantPhases(id, participantId, phases);
+        } else {
+            participant = service.setParticipantActive(id, participantId, request.active());
+        }
+        if (wasActive && !participant.isActive()) {
+            activeTurns.cancel(id, participantId);
+            messages.postSystem(id, dev.cowork.message.Message.Kind.SYSTEM,
+                    "\"" + participant.getDisplayName() + "\" was removed from the conversation by the user"
+                            + " — it no longer takes turns or counts toward votes.", null);
+            proposals.retallyOpen(id);
+        } else if (!wasActive && participant.isActive()) {
+            messages.postSystem(id, dev.cowork.message.Message.Kind.SYSTEM,
+                    "\"" + participant.getDisplayName() + "\" rejoined the conversation — re-added by the user.",
+                    null);
+        }
+        return ParticipantView.of(participant);
     }
 
     @org.springframework.web.bind.annotation.DeleteMapping("/{id}")

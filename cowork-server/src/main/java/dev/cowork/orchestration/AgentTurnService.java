@@ -124,10 +124,24 @@ public class AgentTurnService {
                 .orElse(false);
     }
 
+    /** Optional fallback vendor config ({@code fallback-cli} / {@code fallback-model} / {@code fallback-effort}). */
+    private record Fallback(dev.cowork.agent.CliType cli, String model, String effort) {
+    }
+
+    /** How long to route to the fallback when the primary's limit error names no reset time. */
+    private static final Duration DEFAULT_LIMIT_WINDOW = Duration.ofMinutes(30);
+
+    /** Participants whose primary vendor is usage-limited, and until when (in-memory). */
+    private final Map<java.util.UUID, java.time.Instant> primaryLimitedUntil = new java.util.concurrent.ConcurrentHashMap<>();
+    /** CLI session ids of fallback runs, kept separate from the primary session (in-memory). */
+    private final Map<java.util.UUID, String> fallbackSessions = new java.util.concurrent.ConcurrentHashMap<>();
+
     /**
      * Runs the agent's turn and posts its reply. A retry attempt (after a timeout or
      * crash) gets double the configured turn timeout, since timeouts usually mean the
-     * turn was genuinely long-running rather than stuck.
+     * turn was genuinely long-running rather than stuck. When the primary vendor's
+     * usage limit is exhausted and the agent defines a fallback, the turn reruns on
+     * the fallback model, and turns route straight to it until the limit resets.
      */
     public TurnOutcome execute(Conversation conversation, Participant participant, String prompt, int round,
                                boolean retry) {
@@ -140,7 +154,11 @@ public class AgentTurnService {
                     "Agent '" + participant.getDisplayName() + "' is no longer available.", null);
             return TurnOutcome.of(TurnFailure.CONFIG, "agent is no longer available");
         }
-        CliAgentRunner runner = runners.forType(agent.getCliType()).orElse(null);
+        Map<String, Object> options = parseOptions(agent.getOptions());
+        Fallback fallback = fallbackOf(options);
+        boolean viaFallback = fallback != null && isPrimaryLimited(participant.getId())
+                && runnerFor(fallback.cli()) != null;
+        CliAgentRunner runner = viaFallback ? runnerFor(fallback.cli()) : runners.forType(agent.getCliType()).orElse(null);
         if (runner == null || !runner.available()) {
             messages.postSystem(conversation.getId(), Message.Kind.SYSTEM,
                     "Agent '" + agent.getName() + "' uses CLI '" + agent.getCliType()
@@ -157,19 +175,56 @@ public class AgentTurnService {
             return TurnOutcome.of(TurnFailure.SKIPPED, "interrupted");
         }
         try {
+            return runOnce(conversation, agent, participant, prompt, round, retry, options, fallback, viaFallback);
+        } finally {
+            activeTurns.unregister(conversation.getId(), participant.getId());
+            cliSemaphore.release();
+            publishStatus(conversation, participant, "idle");
+        }
+    }
+
+    private TurnOutcome runOnce(Conversation conversation, AgentDef agent, Participant participant,
+                                String prompt, int round, boolean retry, Map<String, Object> options,
+                                Fallback fallback, boolean viaFallback) {
+        CliAgentRunner runner = viaFallback ? runnerFor(fallback.cli())
+                : runners.forType(agent.getCliType()).orElse(null);
+        if (runner == null || !runner.available()) {
+            return TurnOutcome.of(TurnFailure.CONFIG, "CLI is not installed");
+        }
+        String model = viaFallback ? fallback.model() : agent.getModel();
+        String sessionId = viaFallback ? fallbackSessions.get(participant.getId())
+                : participant.getCliSessionId();
+        Map<String, Object> effectiveOptions = options;
+        String effectivePrompt = prompt;
+        if (viaFallback) {
+            effectiveOptions = new java.util.HashMap<>(options);
+            if (fallback.effort() == null || fallback.effort().isBlank()) {
+                effectiveOptions.remove("effort");
+            } else {
+                effectiveOptions.put("effort", fallback.effort());
+            }
+            if (sessionId == null) {
+                effectivePrompt = prompt + "\n[COORDINATOR]\nYou are running as the FALLBACK model ("
+                        + fallback.model() + ") for agent \"" + participant.getDisplayName()
+                        + "\" because its primary vendor is usage-limited. This is a fresh session: if "
+                        + "context seems missing, read agent-notes/" + participant.getDisplayName()
+                        + ".md and use read_conversation before acting.\n";
+            }
+        }
+        try {
             String token = tokens.issueToken(participant);
-            Map<String, Object> options = parseOptions(agent.getOptions());
             TurnRequest request = new TurnRequest(
                     agent.getName(),
-                    prompt,
+                    participant.getId().toString() + (viaFallback ? "-fallback" : ""),
+                    effectivePrompt,
                     agent.getPersona(),
-                    agent.getModel(),
-                    participant.getCliSessionId(),
+                    model,
+                    sessionId,
                     resolveWorkDir(conversation),
                     properties.mcp().baseUrl(),
                     token,
                     conversation.getPhase() == Conversation.Phase.IMPLEMENTATION,
-                    options,
+                    effectiveOptions,
                     turnTimeout(options, retry));
 
             TurnListener listener = new TurnListener() {
@@ -188,13 +243,17 @@ public class AgentTurnService {
                 @Override
                 public void onProcessStart(Process process) {
                     activeTurns.register(conversation.getId(), new ActiveTurnRegistry.ActiveTurn(
-                            participant.getId(), participant.getDisplayName(), process));
+                            participant.getId(), participant.getDisplayName(), process, round));
                 }
             };
 
             TurnResult result = runner.run(request, listener);
 
-            if (result.sessionId() != null && !result.sessionId().equals(participant.getCliSessionId())) {
+            if (viaFallback) {
+                if (result.sessionId() != null) {
+                    fallbackSessions.put(participant.getId(), result.sessionId());
+                }
+            } else if (result.sessionId() != null && !result.sessionId().equals(participant.getCliSessionId())) {
                 // Re-fetch before saving: the agent may have set flags (e.g. a session
                 // refresh request) mid-turn via MCP, which a stale save would erase.
                 Participant current = participants.findById(participant.getId()).orElse(participant);
@@ -216,16 +275,73 @@ public class AgentTurnService {
             }
             String message = e.getMessage() == null ? "" : e.getMessage();
             if (message.toLowerCase().contains("usage limit")) {
-                log.warn("Agent '{}' hit the Claude usage limit: {}", agent.getName(), message);
+                log.warn("Agent '{}' hit its vendor usage limit ({}): {}", agent.getName(),
+                        viaFallback ? "fallback" : "primary", message);
+                if (!viaFallback && fallback != null && runnerFor(fallback.cli()) != null) {
+                    markPrimaryLimited(conversation, participant, agent, fallback, message);
+                    activeTurns.unregister(conversation.getId(), participant.getId());
+                    return runOnce(conversation, agent, participant, prompt, round, retry, options,
+                            fallback, true);
+                }
                 return TurnOutcome.of(TurnFailure.USAGE_LIMIT, message);
             }
             log.warn("Agent '{}' turn failed: {}", agent.getName(), message);
             return TurnOutcome.of(TurnFailure.FAILED, message);
-        } finally {
-            activeTurns.unregister(conversation.getId(), participant.getId());
-            cliSemaphore.release();
-            publishStatus(conversation, participant, "idle");
         }
+    }
+
+    private CliAgentRunner runnerFor(dev.cowork.agent.CliType cli) {
+        return runners.forType(cli).filter(CliAgentRunner::available).orElse(null);
+    }
+
+    private static Fallback fallbackOf(Map<String, Object> options) {
+        Object cli = options.get("fallback-cli");
+        Object model = options.get("fallback-model");
+        if (cli == null || model == null) {
+            return null;
+        }
+        try {
+            Object effort = options.get("fallback-effort");
+            return new Fallback(dev.cowork.agent.CliType.valueOf(cli.toString().trim().toUpperCase()),
+                    model.toString().trim(), effort == null ? null : effort.toString().trim());
+        } catch (IllegalArgumentException e) {
+            log.warn("Ignoring invalid fallback-cli option '{}'", cli);
+            return null;
+        }
+    }
+
+    private boolean isPrimaryLimited(java.util.UUID participantId) {
+        java.time.Instant until = primaryLimitedUntil.get(participantId);
+        if (until == null) {
+            return false;
+        }
+        if (java.time.Instant.now().isAfter(until)) {
+            primaryLimitedUntil.remove(participantId);
+            return false;
+        }
+        return true;
+    }
+
+    /** Records the primary's limit window (reset time from the error, else a default) and tells the room. */
+    private void markPrimaryLimited(Conversation conversation, Participant participant, AgentDef agent,
+                                    Fallback fallback, String errorMessage) {
+        java.time.Instant resetAt = null;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\|(\\d{10,13})").matcher(errorMessage);
+        if (m.find()) {
+            long value = Long.parseLong(m.group(1));
+            resetAt = m.group(1).length() >= 13
+                    ? java.time.Instant.ofEpochMilli(value) : java.time.Instant.ofEpochSecond(value);
+        }
+        if (resetAt == null || resetAt.isBefore(java.time.Instant.now())) {
+            resetAt = java.time.Instant.now().plus(DEFAULT_LIMIT_WINDOW);
+        }
+        primaryLimitedUntil.put(participant.getId(), resetAt);
+        String when = java.time.LocalTime.ofInstant(resetAt, java.time.ZoneId.systemDefault())
+                .truncatedTo(java.time.temporal.ChronoUnit.MINUTES).toString();
+        messages.postSystem(conversation.getId(), Message.Kind.SYSTEM,
+                "Agent '" + agent.getName() + "' hit its " + agent.getCliType()
+                        + " usage limit — switching to fallback " + fallback.cli() + "/" + fallback.model()
+                        + " until about " + when + ".", null);
     }
 
     /** Adds a turn's cost to the conversation's running spend and notifies the UI. */
@@ -258,8 +374,7 @@ public class AgentTurnService {
             git.commitAll(workspace, agentName, agentName + ": agent turn").ifPresent(commit -> {
                 messages.postSystem(conversation.getId(), Message.Kind.SYSTEM,
                         agentName + " committed " + commit.hash().substring(0, 8)
-                                + (commit.stat() == null ? "" : " (" + commit.stat() + ")")
-                                + " — review with get_commit_diff(\"" + commit.hash().substring(0, 8) + "\").",
+                                + (commit.stat() == null ? "" : " (" + commit.stat() + ")") + ".",
                         null);
                 sseHub.publish(conversation.getId(), "commit", Map.of(
                         "hash", commit.hash(),

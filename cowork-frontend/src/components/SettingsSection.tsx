@@ -3,10 +3,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   addAgentToConversation,
   getAgents,
+  getConversationSkills,
   patchConversation,
+  patchParticipant,
   refreshAgentSession,
+  setConversationSkill,
   type ConversationView,
+  type ParticipantPhases,
   type PatchConversationRequest,
+  type PatchParticipantRequest,
   type VoteMode,
 } from '../api'
 import { formatUsd2, nameColor } from '../utils'
@@ -41,6 +46,20 @@ export default function SettingsSection({ conversation, alwaysOpen = false }: Pr
 
   const agentsQuery = useQuery({ queryKey: ['agents'], queryFn: getAgents, enabled: open })
 
+  const skillsQuery = useQuery({
+    queryKey: ['conversation-skills', conversation.id],
+    queryFn: () => getConversationSkills(conversation.id),
+    enabled: open,
+  })
+
+  const skillMutation = useMutation({
+    mutationFn: ({ name, active }: { name: string; active: boolean }) =>
+      setConversationSkill(conversation.id, name, active),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['conversation-skills', conversation.id] })
+    },
+  })
+
   const patchMutation = useMutation({
     mutationFn: (req: PatchConversationRequest) => patchConversation(conversation.id, req),
     onSuccess: (updated) => {
@@ -60,6 +79,15 @@ export default function SettingsSection({ conversation, alwaysOpen = false }: Pr
 
   const refreshSessionMutation = useMutation({
     mutationFn: (participantId: string) => refreshAgentSession(conversation.id, participantId),
+  })
+
+  const toggleParticipantMutation = useMutation({
+    mutationFn: ({ participantId, ...req }: PatchParticipantRequest & { participantId: string }) =>
+      patchParticipant(conversation.id, participantId, req),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['conversation', conversation.id] })
+      queryClient.invalidateQueries({ queryKey: ['conversations'] })
+    },
   })
 
   const commitRounds = (value: number) => {
@@ -213,10 +241,33 @@ export default function SettingsSection({ conversation, alwaysOpen = false }: Pr
                     className="avatar-dot tiny"
                     style={{ background: nameColor(p.displayName) }}
                   />
-                  <span className="participant-name">{p.displayName}</span>
-                  <span className="badge badge-muted">
-                    {p.kind === 'USER' ? 'user' : 'agent'}
+                  <span className={`participant-name${p.active ? '' : ' inactive'}`}>
+                    {p.displayName}
                   </span>
+                  <span className="badge badge-muted">
+                    {p.kind === 'USER' ? 'user' : p.active ? 'agent' : 'removed'}
+                  </span>
+                  {p.kind === 'AGENT' && (
+                    <select
+                      className="phase-scope-select"
+                      title="Phases this agent is active in — applied now and on every phase switch"
+                      value={p.activePhases}
+                      disabled={
+                        toggleParticipantMutation.isPending &&
+                        toggleParticipantMutation.variables?.participantId === p.id
+                      }
+                      onChange={(e) =>
+                        toggleParticipantMutation.mutate({
+                          participantId: p.id,
+                          activePhases: e.target.value as ParticipantPhases,
+                        })
+                      }
+                    >
+                      <option value="ALL">Both phases</option>
+                      <option value="PLANNING">Planning only</option>
+                      <option value="IMPLEMENTATION">Implementation only</option>
+                    </select>
+                  )}
                   {p.kind === 'AGENT' && p.active && (
                     <button
                       className="icon-btn participant-refresh"
@@ -230,10 +281,61 @@ export default function SettingsSection({ conversation, alwaysOpen = false }: Pr
                       ↻
                     </button>
                   )}
+                  {p.kind === 'AGENT' && (
+                    <button
+                      className={`icon-btn participant-toggle${p.active ? '' : ' rejoin'}`}
+                      title={
+                        p.active
+                          ? 'Remove from conversation — stops taking turns and counting toward votes (can be re-added)'
+                          : 'Re-add to conversation — catches up on missed messages next turn'
+                      }
+                      disabled={
+                        toggleParticipantMutation.isPending &&
+                        toggleParticipantMutation.variables?.participantId === p.id
+                      }
+                      onClick={() =>
+                        toggleParticipantMutation.mutate({ participantId: p.id, active: !p.active })
+                      }
+                    >
+                      {p.active ? '✕' : '↩'}
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
+            {toggleParticipantMutation.isError && (
+              <div className="form-error">
+                {(toggleParticipantMutation.error as Error).message ||
+                  'Could not update participant.'}
+              </div>
+            )}
           </div>
+
+          {(skillsQuery.data ?? []).length > 0 && (
+            <div className="field">
+              <span className="field-label">Skills (also togglable with / in the message box)</span>
+              <div className="participant-list">
+                {(skillsQuery.data ?? []).map((s) => (
+                  <label className="check" key={s.name} title={s.description}>
+                    <input
+                      type="checkbox"
+                      checked={s.active}
+                      disabled={
+                        skillMutation.isPending && skillMutation.variables?.name === s.name
+                      }
+                      onChange={(e) =>
+                        skillMutation.mutate({ name: s.name, active: e.target.checked })
+                      }
+                    />
+                    /{s.name}
+                    {s.phases.length > 0 && !s.overridden && (
+                      <span className="field-hint"> default in {s.phases.join('/')}</span>
+                    )}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="field">
             <span className="field-label">Add agent</span>

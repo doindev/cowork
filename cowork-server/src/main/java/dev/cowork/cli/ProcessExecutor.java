@@ -49,7 +49,13 @@ public class ProcessExecutor {
             builder.directory(workDir.toFile());
         }
         if (extraEnv != null) {
-            builder.environment().putAll(extraEnv);
+            extraEnv.forEach((name, value) -> {
+                if (value == null) {
+                    builder.environment().remove(name);
+                } else {
+                    builder.environment().put(name, value);
+                }
+            });
         }
         Process process = builder.start();
         if (onStart != null) {

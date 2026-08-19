@@ -24,6 +24,8 @@ export default function PhaseBanner({ conversation, filterUser, onToggleFilter }
     onSuccess: (info) => {
       setConfirming(false)
       applyPhaseToCache(queryClient, conversation.id, info)
+      // Phase scoping may have activated/deactivated participants server-side.
+      void queryClient.invalidateQueries({ queryKey: ['conversation', conversation.id] })
     },
   })
 

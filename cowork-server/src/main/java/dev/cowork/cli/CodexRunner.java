@@ -5,7 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -19,8 +19,8 @@ import org.springframework.stereotype.Component;
 /**
  * OpenAI Codex CLI adapter: {@code codex exec --json} per turn, resume via
  * {@code codex exec resume <id>}. MCP servers and persona are injected through a
- * per-turn synthetic CODEX_HOME (config.toml + AGENTS.md), with auth files copied
- * from the real ~/.codex so login is preserved.
+ * participant-specific synthetic CODEX_HOME (config.toml + AGENTS.md), with auth
+ * files copied from the real ~/.codex so login and rollout history are preserved.
  */
 @Component
 public class CodexRunner implements CliAgentRunner {
@@ -29,8 +29,6 @@ public class CodexRunner implements CliAgentRunner {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final ProcessExecutor executor;
-    private volatile Boolean available;
-
     public CodexRunner(ProcessExecutor executor) {
         this.executor = executor;
     }
@@ -42,49 +40,28 @@ public class CodexRunner implements CliAgentRunner {
 
     @Override
     public boolean available() {
-        Boolean cached = available;
-        if (cached == null) {
-            cached = CliBinaries.onPath("codex");
-            available = cached;
-        }
-        return cached;
+        // Do not cache a miss: desktop/npm installs and PATH changes are common while
+        // the server is already running.
+        return CliBinaries.onPath("codex");
     }
 
     @Override
     public TurnResult run(TurnRequest request, TurnListener listener) throws CliTurnException {
         TurnListener effective = listener == null ? TurnListener.NOOP : listener;
-        Path codexHome = null;
         try {
-            codexHome = prepareCodexHome(request);
-
-            List<String> cmd = new ArrayList<>();
-            if (CliBinaries.needsCmdWrapper("codex")) {
-                cmd.add("cmd.exe");
-                cmd.add("/c");
-            }
-            cmd.add(CliBinaries.resolve("codex"));
-            cmd.add("exec");
-            if (request.sessionId() != null && !request.sessionId().isBlank()) {
-                cmd.add("resume");
-                cmd.add(request.sessionId());
-            }
-            cmd.add("--json");
-            cmd.add("--skip-git-repo-check");
-            cmd.add("--sandbox");
-            cmd.add(sandboxMode(request));
-            if (request.workDir() != null) {
-                cmd.add("-C");
-                cmd.add(request.workDir().toString());
-            }
-            if (request.model() != null && !request.model().isBlank()) {
-                cmd.add("--model");
-                cmd.add(request.model());
-            }
-            cmd.add("-");  // read the prompt from stdin
-
-            ProcessExecutor.ExecResult result = executor.run(cmd, request.workDir(),
-                    Map.of("CODEX_HOME", codexHome.toString()), request.prompt(), request.timeout(),
+            Path codexHome = prepareCodexHome(request);
+            boolean resume = request.sessionId() != null && !request.sessionId().isBlank();
+            Map<String, String> environment = codexEnvironment(codexHome);
+            ProcessExecutor.ExecResult result = executor.run(buildCommand(request, resume), request.workDir(),
+                    environment, request.prompt(), request.timeout(),
                     effective::onProcessStart, null);
+            if (result.exitCode() != 0 && resume && missingRollout(result)) {
+                log.warn("Codex rollout '{}' is unavailable; starting a fresh session for agent '{}'",
+                        request.sessionId(), request.agentName());
+                result = executor.run(buildCommand(request, false), request.workDir(),
+                        environment, request.prompt(), request.timeout(),
+                        effective::onProcessStart, null);
+            }
             if (result.timedOut()) {
                 throw new CliTurnException("codex turn timed out after " + request.timeout().toMinutes() + " minutes");
             }
@@ -98,9 +75,52 @@ public class CodexRunner implements CliAgentRunner {
                 Thread.currentThread().interrupt();
             }
             throw new CliTurnException("Failed to run codex: " + e.getMessage(), e);
-        } finally {
-            deleteRecursively(codexHome);
         }
+    }
+
+    /** Prevent a parent Codex session from imposing its managed sandbox on child agents. */
+    private static Map<String, String> codexEnvironment(Path codexHome) {
+        Map<String, String> environment = new HashMap<>();
+        environment.put("CODEX_HOME", codexHome.toString());
+        environment.put("CODEX_PERMISSION_PROFILE", null);
+        environment.put("CODEX_SANDBOX_NETWORK_DISABLED", null);
+        environment.put("CODEX_THREAD_ID", null);
+        return environment;
+    }
+
+    private List<String> buildCommand(TurnRequest request, boolean resume) {
+        List<String> cmd = new ArrayList<>();
+        if (CliBinaries.needsCmdWrapper("codex")) {
+            cmd.add("cmd.exe");
+            cmd.add("/c");
+        }
+        cmd.add(CliBinaries.resolve("codex"));
+        cmd.add("--sandbox");
+        cmd.add(sandboxMode(request));
+        if (request.workDir() != null) {
+            cmd.add("-C");
+            cmd.add(request.workDir().toString());
+        }
+        if (request.model() != null && !request.model().isBlank()) {
+            cmd.add("--model");
+            cmd.add(request.model());
+        }
+        appendCodexGlobalOptions(cmd, request);
+        cmd.add("exec");
+        if (resume) {
+            cmd.add("resume");
+            cmd.add(request.sessionId());
+        }
+        cmd.add("--json");
+        cmd.add("--skip-git-repo-check");
+        appendCodexExecOptions(cmd, request);
+        cmd.add("-");
+        return cmd;
+    }
+
+    static boolean missingRollout(ProcessExecutor.ExecResult result) {
+        String output = result.stderr() + "\n" + result.stdout();
+        return output.toLowerCase().contains("no rollout found for thread id");
     }
 
     private String sandboxMode(TurnRequest request) {
@@ -108,9 +128,84 @@ public class CodexRunner implements CliAgentRunner {
         return override == null ? "workspace-write" : override.toString();
     }
 
-    /** Builds a throwaway CODEX_HOME: copied auth + generated config.toml + persona AGENTS.md. */
+    static void appendCodexGlobalOptions(List<String> cmd, TurnRequest request) {
+        Object automaticReview = request.option("approve-for-me");
+        if (automaticReview != null && Boolean.parseBoolean(automaticReview.toString())) {
+            cmd.add("--approve-for-me");
+        } else {
+            String approvalPolicy = request.option("approval-policy") == null
+                    ? "never" : request.option("approval-policy").toString().trim().toLowerCase();
+            if (approvalPolicy.matches("untrusted|on-request|never")) {
+                cmd.add("--ask-for-approval");
+                cmd.add(approvalPolicy);
+            } else {
+                log.warn("Ignoring invalid Codex approval-policy '{}'; using 'never'",
+                        request.option("approval-policy"));
+                cmd.add("--ask-for-approval");
+                cmd.add("never");
+            }
+        }
+        Object effort = request.option("effort");
+        if (effort != null) {
+            String value = effort.toString().trim().toLowerCase();
+            if (value.matches("minimal|low|medium|high|xhigh")) {
+                cmd.add("--config");
+                cmd.add("model_reasoning_effort=\"" + value + "\"");
+            } else {
+                log.warn("Ignoring invalid Codex effort option '{}'", effort);
+            }
+        }
+        appendRepeated(cmd, "--config", request.option("config"));
+        appendRepeated(cmd, "--enable", request.option("enable"));
+        appendRepeated(cmd, "--disable", request.option("disable"));
+        appendValue(cmd, "--local-provider", request.option("local-provider"));
+        appendValue(cmd, "--profile", request.option("profile"));
+        appendFlag(cmd, "--oss", request.option("oss"));
+        appendFlag(cmd, "--dangerously-bypass-approvals-and-sandbox",
+                request.option("dangerously-bypass-approvals-and-sandbox"));
+        appendFlag(cmd, "--dangerously-bypass-hook-trust",
+                request.option("dangerously-bypass-hook-trust"));
+        appendRepeated(cmd, "--add-dir", request.option("add-dir"));
+    }
+
+    static void appendCodexExecOptions(List<String> cmd, TurnRequest request) {
+        appendRepeated(cmd, "--image", request.option("image"));
+        appendValue(cmd, "--output-schema", request.option("output-schema"));
+        appendFlag(cmd, "--strict-config", request.option("strict-config"));
+        appendFlag(cmd, "--ephemeral", request.option("ephemeral"));
+        appendFlag(cmd, "--ignore-user-config", request.option("ignore-user-config"));
+        appendFlag(cmd, "--ignore-rules", request.option("ignore-rules"));
+    }
+
+    private static void appendValue(List<String> cmd, String flag, Object value) {
+        if (value != null && !value.toString().isBlank()) {
+            cmd.add(flag);
+            cmd.add(value.toString().trim());
+        }
+    }
+
+    private static void appendRepeated(List<String> cmd, String flag, Object value) {
+        if (value == null) {
+            return;
+        }
+        for (String item : value.toString().split(",")) {
+            appendValue(cmd, flag, item);
+        }
+    }
+
+    private static void appendFlag(List<String> cmd, String flag, Object value) {
+        if (value != null && Boolean.parseBoolean(value.toString())) {
+            cmd.add(flag);
+        }
+    }
+
+    /** Builds a stable per-participant CODEX_HOME so Codex can resume local rollouts. */
     private Path prepareCodexHome(TurnRequest request) throws IOException {
-        Path home = Files.createTempDirectory("cowork-codex-home-");
+        String owner = request.sessionOwnerId() == null || request.sessionOwnerId().isBlank()
+                ? request.agentName() : request.sessionOwnerId();
+        owner = owner == null ? "unknown" : owner.replaceAll("[^A-Za-z0-9_-]", "_");
+        Path home = Path.of(System.getProperty("user.home"), ".cowork", "codex-homes", owner);
+        Files.createDirectories(home);
         Path realHome = Path.of(System.getProperty("user.home"), ".codex");
         for (String authFile : List.of("auth.json", "version.json")) {
             Path source = realHome.resolve(authFile);
@@ -129,6 +224,16 @@ public class CodexRunner implements CliAgentRunner {
             toml.append("command = \"npx\"\n");
             toml.append("args = [\"-y\", \"chrome-devtools-mcp@latest\"]\n\n");
         }
+        // Trust the workspace and allow network inside the workspace-write sandbox. The
+        // config is regenerated every turn, so without an explicit trust entry Codex sees
+        // an untrusted folder each time — and in non-interactive exec mode it cannot ask,
+        // so the model replies asking the user to change permissions instead of working.
+        if (request.workDir() != null) {
+            toml.append("[projects.'").append(request.workDir().toAbsolutePath()).append("']\n");
+            toml.append("trust_level = \"trusted\"\n\n");
+        }
+        toml.append("[sandbox_workspace_write]\n");
+        toml.append("network_access = true\n\n");
         Files.writeString(home.resolve("config.toml"), toml.toString());
         if (request.persona() != null && !request.persona().isBlank()) {
             Files.writeString(home.resolve("AGENTS.md"), request.persona());
@@ -193,18 +298,4 @@ public class CodexRunner implements CliAgentRunner {
         return s.length() > 500 ? s.substring(0, 500) + "…" : s;
     }
 
-    private static void deleteRecursively(Path dir) {
-        if (dir == null) {
-            return;
-        }
-        try (var walk = Files.walk(dir)) {
-            walk.sorted(Comparator.reverseOrder()).forEach(p -> {
-                try {
-                    Files.deleteIfExists(p);
-                } catch (IOException ignored) {
-                }
-            });
-        } catch (IOException ignored) {
-        }
-    }
 }

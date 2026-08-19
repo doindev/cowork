@@ -6,8 +6,15 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record CoworkProperties(
         String agentsDir,
         String workspacesDir,
+        String skillsDir,
         Cli cli,
         Mcp mcp) {
+
+    public CoworkProperties {
+        if (skillsDir == null || skillsDir.isBlank()) {
+            skillsDir = "../skills";
+        }
+    }
 
     public record Cli(int maxConcurrent, int turnTimeoutSeconds) {
         public Cli {

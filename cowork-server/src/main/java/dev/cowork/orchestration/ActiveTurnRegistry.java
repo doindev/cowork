@@ -16,7 +16,7 @@ public class ActiveTurnRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(ActiveTurnRegistry.class);
 
-    public record ActiveTurn(UUID participantId, String agentName, Process process) {
+    public record ActiveTurn(UUID participantId, String agentName, Process process, int round) {
     }
 
     private final Map<UUID, Map<UUID, ActiveTurn>> byConversation = new ConcurrentHashMap<>();
@@ -38,6 +38,16 @@ public class ActiveTurnRegistry {
     public List<ActiveTurn> active(UUID conversationId) {
         Map<UUID, ActiveTurn> turns = byConversation.get(conversationId);
         return turns == null ? List.of() : List.copyOf(turns.values());
+    }
+
+    /**
+     * The hand-off round of the participant's currently running turn, or 0 when none is
+     * running. Lets MCP tools inherit the turn's round instead of resetting the budget.
+     */
+    public int currentRound(UUID conversationId, UUID participantId) {
+        Map<UUID, ActiveTurn> turns = byConversation.get(conversationId);
+        ActiveTurn turn = turns == null ? null : turns.get(participantId);
+        return turn == null ? 0 : turn.round();
     }
 
     /** Kills the process tree of the given agent's running turn. Returns true if one was killed. */

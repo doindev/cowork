@@ -99,6 +99,25 @@ public class ProposalService {
         return proposal;
     }
 
+    /**
+     * Re-tallies every OPEN proposal of a conversation. Called when the electorate shrinks
+     * (an agent is removed) so a vote that was only waiting on the removed agent can decide
+     * instead of hanging forever.
+     */
+    @Transactional
+    public void retallyOpen(UUID conversationId) {
+        Conversation conversation = conversations.findById(conversationId).orElseThrow();
+        for (Proposal open : proposals.findByConversationIdAndStatusOrderByCreatedAtDesc(
+                conversationId, Proposal.Status.OPEN)) {
+            Proposal proposal = proposals.findByIdForUpdate(open.getId()).orElse(null);
+            if (proposal == null || proposal.getStatus() != Proposal.Status.OPEN) {
+                continue;
+            }
+            evaluate(proposal, conversation);
+            publish(proposal);
+        }
+    }
+
     private void evaluate(Proposal proposal, Conversation conversation) {
         List<Participant> eligible = participants
                 .findByConversationIdAndActiveTrue(proposal.getConversationId()).stream()

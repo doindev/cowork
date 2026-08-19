@@ -8,6 +8,7 @@ import java.util.Map;
  * One headless CLI invocation on behalf of an agent.
  *
  * @param agentName        display name of the agent taking the turn
+ * @param sessionOwnerId   stable participant identifier used for CLI session storage
  * @param prompt           the delta transcript + instructions fed on stdin
  * @param persona          system-prompt persona text (may be null)
  * @param model            model override from the agent definition (may be null)
@@ -21,6 +22,7 @@ import java.util.Map;
  */
 public record TurnRequest(
         String agentName,
+        String sessionOwnerId,
         String prompt,
         String persona,
         String model,

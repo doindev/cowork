@@ -20,12 +20,15 @@ export interface AgentView {
   enabled: boolean
 }
 
+export type ParticipantPhases = 'ALL' | 'PLANNING' | 'IMPLEMENTATION'
+
 export interface ParticipantView {
   id: string
   kind: ParticipantKind
   agentId: string | null
   displayName: string
   active: boolean
+  activePhases: ParticipantPhases
 }
 
 export interface ConversationView {
@@ -348,6 +351,50 @@ export function deleteConversation(id: string): Promise<void> {
 
 export function addAgentToConversation(conversationId: string, agentId: string): Promise<void> {
   return http(`/conversations/${conversationId}/agents/${agentId}`, { method: 'POST' })
+}
+
+export interface SkillView {
+  name: string
+  description: string
+  phases: Phase[]
+}
+
+export interface ConversationSkillView extends SkillView {
+  active: boolean
+  overridden: boolean
+}
+
+export function getConversationSkills(conversationId: string): Promise<ConversationSkillView[]> {
+  return http(`/conversations/${conversationId}/skills`)
+}
+
+export function setConversationSkill(
+  conversationId: string,
+  skillName: string,
+  active: boolean,
+): Promise<ConversationSkillView> {
+  return http(`/conversations/${conversationId}/skills/${encodeURIComponent(skillName)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ active }),
+  })
+}
+
+export interface PatchParticipantRequest {
+  /** Manual remove/re-add; overrides the phase scope until the next phase change. */
+  active?: boolean
+  /** Phase scope; applied immediately and on every phase switch. */
+  activePhases?: ParticipantPhases
+}
+
+export function patchParticipant(
+  conversationId: string,
+  participantId: string,
+  req: PatchParticipantRequest,
+): Promise<ParticipantView> {
+  return http(`/conversations/${conversationId}/participants/${participantId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(req),
+  })
 }
 
 export function getMessages(

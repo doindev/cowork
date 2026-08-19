@@ -33,12 +33,15 @@ public class CoworkChatTools {
     private final MessageService messageService;
     private final MessageRepository messageRepository;
     private final ParticipantRepository participants;
+    private final dev.cowork.orchestration.ActiveTurnRegistry activeTurns;
 
     public CoworkChatTools(MessageService messageService, MessageRepository messageRepository,
-                           ParticipantRepository participants) {
+                           ParticipantRepository participants,
+                           dev.cowork.orchestration.ActiveTurnRegistry activeTurns) {
         this.messageService = messageService;
         this.messageRepository = messageRepository;
         this.participants = participants;
+        this.activeTurns = activeTurns;
     }
 
     @McpTool(name = "post_message", description = """
@@ -48,7 +51,10 @@ public class CoworkChatTools {
     public String postMessage(
             @McpToolParam(required = true, description = "The message text to post") String text) {
         Participant caller = McpCallerContext.require();
-        Message message = messageService.post(caller.getConversationId(), caller, text, 0);
+        // Inherit the running turn's hand-off round so posting via MCP cannot reset the
+        // agent-to-agent round budget.
+        int round = activeTurns.currentRound(caller.getConversationId(), caller.getId());
+        Message message = messageService.post(caller.getConversationId(), caller, text, round);
         return "posted message " + message.id();
     }
 

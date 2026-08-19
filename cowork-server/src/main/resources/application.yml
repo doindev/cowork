@@ -40,6 +40,7 @@ management:
 cowork:
   agents-dir: ../agents
   workspaces-dir: ../workspaces
+  skills-dir: ../skills
   cli:
     max-concurrent: 4
     # Default per-turn timeout; agents can override it with a turn-timeout-seconds

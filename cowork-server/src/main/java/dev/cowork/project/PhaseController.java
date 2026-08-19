@@ -36,11 +36,15 @@ public class PhaseController {
     private final SseHub sseHub;
     private final dev.cowork.conversation.ParticipantRepository participants;
     private final dev.cowork.orchestration.ConversationOrchestrator orchestrator;
+    private final dev.cowork.orchestration.ActiveTurnRegistry activeTurns;
+    private final dev.cowork.proposal.ProposalService proposals;
 
     public PhaseController(ConversationService conversationService, ConversationRepository conversations,
                            ProjectService projectService, MessageService messages, SseHub sseHub,
                            dev.cowork.conversation.ParticipantRepository participants,
-                           dev.cowork.orchestration.ConversationOrchestrator orchestrator) {
+                           dev.cowork.orchestration.ConversationOrchestrator orchestrator,
+                           dev.cowork.orchestration.ActiveTurnRegistry activeTurns,
+                           dev.cowork.proposal.ProposalService proposals) {
         this.conversationService = conversationService;
         this.conversations = conversations;
         this.projectService = projectService;
@@ -48,6 +52,8 @@ public class PhaseController {
         this.sseHub = sseHub;
         this.participants = participants;
         this.orchestrator = orchestrator;
+        this.activeTurns = activeTurns;
+        this.proposals = proposals;
     }
 
     @PostMapping
@@ -66,10 +72,34 @@ public class PhaseController {
                 "Phase changed to " + request.phase()
                         + (workspacePath == null ? "" : " — agents now work in " + workspacePath), null);
         sseHub.publish(id, "phase", new PhaseView(request.phase().name(), conversation.getProjectId(), workspacePath));
+        applyPhaseScoping(id, request.phase());
         if (enteringImplementation) {
             kickOffTaskDecomposition(conversation);
         }
         return new PhaseView(conversation.getPhase().name(), conversation.getProjectId(), workspacePath);
+    }
+
+    /** Applies each agent's phase scope (clearing manual overrides) after a phase switch. */
+    private void applyPhaseScoping(UUID conversationId, Conversation.Phase newPhase) {
+        var changed = conversationService.applyPhaseScoping(conversationId, newPhase);
+        boolean anyDeactivated = false;
+        for (var participant : changed) {
+            if (participant.isActive()) {
+                messages.postSystem(conversationId, Message.Kind.SYSTEM,
+                        "\"" + participant.getDisplayName() + "\" joined the team for the " + newPhase
+                                + " phase (phase scope: " + participant.getActivePhases() + ").", null);
+            } else {
+                anyDeactivated = true;
+                activeTurns.cancel(conversationId, participant.getId());
+                messages.postSystem(conversationId, Message.Kind.SYSTEM,
+                        "\"" + participant.getDisplayName() + "\" left the team for the " + newPhase
+                                + " phase (phase scope: " + participant.getActivePhases()
+                                + ") — it no longer takes turns or counts toward votes.", null);
+            }
+        }
+        if (anyDeactivated) {
+            proposals.retallyOpen(conversationId);
+        }
     }
 
     /**

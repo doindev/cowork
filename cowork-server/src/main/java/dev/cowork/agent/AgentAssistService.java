@@ -35,8 +35,11 @@ public class AgentAssistService {
             description (optional one-liner), options (optional map, e.g. permission-mode, \
             turn-timeout-seconds to give slow agents more than the default 300s per turn, \
             effort: low|medium|high|xhigh|max to set the claude CLI thinking level, \
-            autocompact: auto|100000-1000000 to auto-compact long claude sessions, or \
-            max-session-turns: N to auto-refresh the agent's session every N turns, 0 = off). \
+            autocompact: auto|100000-1000000 to auto-compact long claude sessions, \
+            max-session-turns: N to auto-refresh the agent's session every N turns, 0 = off, or \
+            fallback-cli + fallback-model (+ optional fallback-effort) naming another vendor's \
+            CLI and model that turns automatically reroute to while the primary vendor's usage \
+            limit is exhausted). \
             After the frontmatter comes the persona: the system prompt defining the agent's \
             specialty, working style, and collaboration behavior in the team chat room.
 
@@ -84,6 +87,7 @@ public class AgentAssistService {
         try {
             TurnRequest request = new TurnRequest(
                     "assistant",
+                    "agent-manager-assistant",
                     prompt.toString(),
                     SYSTEM_PROMPT,
                     null,

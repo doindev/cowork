@@ -2019,6 +2019,51 @@ textarea:disabled {
   font-size: 13px;
 }
 
+.participant-name.inactive {
+  color: var(--text-faint);
+  text-decoration: line-through;
+}
+
+.skill-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.skill-option-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.skill-option-hint {
+  font-size: 11px;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+.phase-scope-select {
+  font-size: 11px;
+  padding: 1px 4px;
+  max-width: 132px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+}
+
+.participant-toggle {
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.6;
+}
+
+.participant-toggle:hover {
+  opacity: 1;
+}
+
 .active-dot {
   width: 7px;
   height: 7px;

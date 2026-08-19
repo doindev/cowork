@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { patchConversation, sendMessage, uploadDoc, type ParticipantView } from '../api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  getConversationSkills,
+  patchConversation,
+  sendMessage,
+  setConversationSkill,
+  uploadDoc,
+  type ConversationSkillView,
+  type ParticipantView,
+} from '../api'
 import { appendMessageToCache } from '../hooks/useConversationEvents'
 
 interface Props {
@@ -104,6 +112,12 @@ function loadHistory(conversationId: string): string[] {
   }
 }
 
+/** A slash command is the entire message: "/" plus an optional partial skill name. */
+function detectSlash(value: string): string | null {
+  const match = /^\/([A-Za-z0-9_-]*)$/.exec(value)
+  return match ? match[1] : null
+}
+
 function detectMention(value: string, caret: number): MentionState | null {
   const before = value.slice(0, caret)
   const at = before.lastIndexOf('@')
@@ -135,6 +149,8 @@ export default function MessageInput({
   const [dragActive, setDragActive] = useState(false)
   const [text, setText] = useState('')
   const [mention, setMention] = useState<MentionState | null>(null)
+  /** Partial skill name after a leading "/", or null when the slash menu is closed. */
+  const [slash, setSlash] = useState<string | null>(null)
   const [highlightIndex, setHighlightIndex] = useState(0)
   const [history, setHistory] = useState<string[]>(() => loadHistory(conversationId))
   /** Index into history while browsing with arrows; null while editing the draft. */
@@ -157,11 +173,15 @@ export default function MessageInput({
     setNavIndex(null)
     setBelowDraft(false)
     setMention(null)
+    setSlash(null)
     requestAnimationFrame(autosize)
   }, [conversationId])
 
   const names = useMemo(
-    () => Array.from(new Set(participants.map((p) => p.displayName))).sort(),
+    () =>
+      Array.from(
+        new Set(participants.filter((p) => p.active).map((p) => p.displayName)),
+      ).sort(),
     [participants],
   )
 
@@ -170,6 +190,26 @@ export default function MessageInput({
     const q = mention.query.toLowerCase()
     return names.filter((n) => n.toLowerCase().includes(q))
   }, [mention, names])
+
+  const skillsQuery = useQuery({
+    queryKey: ['conversation-skills', conversationId],
+    queryFn: () => getConversationSkills(conversationId),
+    staleTime: 30_000,
+  })
+
+  const toggleSkillMutation = useMutation({
+    mutationFn: ({ name, active }: { name: string; active: boolean }) =>
+      setConversationSkill(conversationId, name, active),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['conversation-skills', conversationId] })
+    },
+  })
+
+  const slashSuggestions = useMemo(() => {
+    if (slash === null) return []
+    const q = slash.toLowerCase()
+    return (skillsQuery.data ?? []).filter((s) => s.name.toLowerCase().includes(q))
+  }, [slash, skillsQuery.data])
 
   const sendMutation = useMutation({
     mutationFn: async ({
@@ -270,7 +310,9 @@ export default function MessageInput({
     if (!el) return
     const next = detectMention(el.value, el.selectionStart ?? el.value.length)
     setMention(next)
-    if (next) setHighlightIndex(0)
+    const nextSlash = detectSlash(el.value)
+    setSlash(nextSlash)
+    if (next || nextSlash !== null) setHighlightIndex(0)
   }
 
   const acceptMention = (name: string) => {
@@ -287,6 +329,19 @@ export default function MessageInput({
         node.focus()
         node.setSelectionRange(nextCaret, nextCaret)
       }
+      autosize()
+    })
+  }
+
+  /** Toggles the picked skill and clears the slash command from the input. */
+  const acceptSlash = (skill: ConversationSkillView) => {
+    toggleSkillMutation.mutate({ name: skill.name, active: !skill.active })
+    setText('')
+    setSlash(null)
+    draftRef.current = ''
+    saveDraft(conversationId, '', pastes)
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus()
       autosize()
     })
   }
@@ -312,6 +367,7 @@ export default function MessageInput({
         setBelowDraft(false)
         setText('')
         setMention(null)
+        setSlash(null)
         setPending([])
         setPastes([])
         setConfirmPaste(null)
@@ -328,6 +384,7 @@ export default function MessageInput({
     setBelowDraft(below)
     setText(value)
     setMention(null)
+    setSlash(null)
     requestAnimationFrame(() => {
       const node = textareaRef.current
       if (node) {
@@ -339,6 +396,28 @@ export default function MessageInput({
   }
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (slash !== null && slashSuggestions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setHighlightIndex((i) => (i + 1) % slashSuggestions.length)
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setHighlightIndex((i) => (i - 1 + slashSuggestions.length) % slashSuggestions.length)
+        return
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault()
+        acceptSlash(slashSuggestions[Math.min(highlightIndex, slashSuggestions.length - 1)])
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setSlash(null)
+        return
+      }
+    }
     if (mention && suggestions.length > 0) {
       if (e.key === 'ArrowDown') {
         e.preventDefault()
@@ -424,7 +503,33 @@ export default function MessageInput({
         addFiles(e.dataTransfer.files)
       }}
     >
-      {mention && suggestions.length > 0 && (
+      {slash !== null && slashSuggestions.length > 0 && (
+        <div className="mention-dropdown" role="listbox">
+          {slashSuggestions.map((skill, i) => (
+            <button
+              key={skill.name}
+              role="option"
+              aria-selected={i === highlightIndex}
+              className={`mention-option skill-option${i === highlightIndex ? ' active' : ''}`}
+              title={skill.description}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                acceptSlash(skill)
+              }}
+              onMouseEnter={() => setHighlightIndex(i)}
+            >
+              <span className="skill-option-name">
+                <span className={`active-dot${skill.active ? ' on' : ''}`} />/{skill.name}
+              </span>
+              <span className="skill-option-hint">
+                {skill.active ? 'active — select to deactivate' : 'select to activate'}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {mention && slash === null && suggestions.length > 0 && (
         <div className="mention-dropdown" role="listbox">
           {suggestions.map((name, i) => (
             <button
@@ -547,7 +652,10 @@ export default function MessageInput({
           }}
           onBlur={() => {
             // Delay so mousedown on a suggestion can still fire.
-            window.setTimeout(() => setMention(null), 150)
+            window.setTimeout(() => {
+              setMention(null)
+              setSlash(null)
+            }, 150)
           }}
         />
         <button

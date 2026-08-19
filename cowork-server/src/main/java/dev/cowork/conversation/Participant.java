@@ -12,6 +12,15 @@ public class Participant implements UuidAssignable {
 
     public enum Kind { USER, AGENT }
 
+    /** Which conversation phases this participant is active in (phase scoping). */
+    public enum ActivePhases {
+        ALL, PLANNING, IMPLEMENTATION;
+
+        public boolean appliesTo(Conversation.Phase phase) {
+            return this == ALL || name().equals(phase.name());
+        }
+    }
+
     @Id
     private UUID id;
     private UUID conversationId;
@@ -28,6 +37,10 @@ public class Participant implements UuidAssignable {
     private boolean sessionResetRequested;
     /** Turns taken on the current CLI session (drives optional auto-rotation). */
     private int sessionTurnCount;
+    /** Phases this participant is active in; applied automatically on phase switches. */
+    private ActivePhases activePhases = ActivePhases.ALL;
+    /** True after a manual activate/deactivate; cleared (and scope re-applied) on phase switch. */
+    private boolean phaseOverride;
 
     @Override
     public UUID getId() { return id; }
@@ -78,4 +91,14 @@ public class Participant implements UuidAssignable {
     public int getSessionTurnCount() { return sessionTurnCount; }
 
     public void setSessionTurnCount(int sessionTurnCount) { this.sessionTurnCount = sessionTurnCount; }
+
+    public ActivePhases getActivePhases() { return activePhases == null ? ActivePhases.ALL : activePhases; }
+
+    public void setActivePhases(ActivePhases activePhases) {
+        this.activePhases = activePhases == null ? ActivePhases.ALL : activePhases;
+    }
+
+    public boolean isPhaseOverride() { return phaseOverride; }
+
+    public void setPhaseOverride(boolean phaseOverride) { this.phaseOverride = phaseOverride; }
 }
