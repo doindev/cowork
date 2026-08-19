@@ -54,6 +54,7 @@ public class AgentTurnService {
     private final ActiveTurnRegistry activeTurns;
     private final dev.cowork.skill.SkillService skills;
     private final dev.cowork.rtk.RtkService rtk;
+    private final dev.cowork.rtk.RtkToolSupport rtkTools;
     private final dev.cowork.project.WorkspaceLocator workspaces;
     private final Semaphore cliSemaphore;
 
@@ -63,6 +64,7 @@ public class AgentTurnService {
                             CoworkProperties properties, GitService git,
                             ConversationRepository conversations, ActiveTurnRegistry activeTurns,
                             dev.cowork.skill.SkillService skills, dev.cowork.rtk.RtkService rtk,
+                            dev.cowork.rtk.RtkToolSupport rtkTools,
                             dev.cowork.project.WorkspaceLocator workspaces) {
         this.runners = runners;
         this.agents = agents;
@@ -77,6 +79,7 @@ public class AgentTurnService {
         this.activeTurns = activeTurns;
         this.skills = skills;
         this.rtk = rtk;
+        this.rtkTools = rtkTools;
         this.workspaces = workspaces;
         this.cliSemaphore = new Semaphore(properties.cli().maxConcurrent());
     }
@@ -219,6 +222,7 @@ public class AgentTurnService {
                         + ".md and use read_conversation before acting.\n";
             }
         }
+        boolean rtkActive = skills.isActive(conversation, "rtk");
         try {
             String token = tokens.issueToken(participant);
             TurnRequest request = new TurnRequest(
@@ -254,6 +258,15 @@ public class AgentTurnService {
                     activeTurns.register(conversation.getId(), new ActiveTurnRegistry.ActiveTurn(
                             participant.getId(), participant.getDisplayName(), process, round));
                 }
+
+                @Override
+                public void onRawOutput(String output) {
+                    if (rtkActive) {
+                        // A tool rtk could not launch is remembered, so later turns are
+                        // told to run it plain instead of failing on it again.
+                        rtkTools.learnFrom(output);
+                    }
+                }
             };
 
             TurnResult result = runner.run(request, listener);
@@ -284,7 +297,7 @@ public class AgentTurnService {
                 return TurnOutcome.of(TurnFailure.CANCELLED, "cancelled by the user");
             }
             String message = e.getMessage() == null ? "" : e.getMessage();
-            if (message.toLowerCase().contains("usage limit")) {
+            if (isVendorLimit(message)) {
                 log.warn("Agent '{}' hit its vendor usage limit ({}): {}", agent.getName(),
                         viaFallback ? "fallback" : "primary", message);
                 if (!viaFallback && fallback != null && runnerFor(fallback.cli()) != null) {
@@ -321,6 +334,17 @@ public class AgentTurnService {
             return Map.of();
         }
         return Map.of("RTK_TELEMETRY_DISABLED", "1");
+    }
+
+    /**
+     * Whether a CLI error means the vendor cut us off rather than the turn going wrong.
+     * Claude reports both "usage limit" and "session limit" ("You've hit your session
+     * limit · resets 3:20pm"), and either way retrying the same vendor is pointless.
+     */
+    static boolean isVendorLimit(String message) {
+        String lower = message == null ? "" : message.toLowerCase();
+        return lower.contains("usage limit") || lower.contains("session limit")
+                || lower.contains("rate limit") || lower.contains("quota exceeded");
     }
 
     private CliAgentRunner runnerFor(dev.cowork.agent.CliType cli) {

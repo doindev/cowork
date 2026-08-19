@@ -69,6 +69,9 @@ public class ClaudeCodeRunner implements CliAgentRunner {
             if (!trimmed.startsWith("{")) {
                 return;
             }
+            // Tool results (command output) are not modelled below, but the caller may
+            // still want to see them — e.g. to notice a wrapper that could not launch.
+            listener.onRawOutput(trimmed);
             try {
                 JsonNode node = MAPPER.readTree(trimmed);
                 switch (node.path("type").asText("")) {

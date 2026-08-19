@@ -85,6 +85,7 @@ public class CopilotRunner implements CliAgentRunner {
             ProcessExecutor.ExecResult result = executor.run(cmd, request.workDir(),
                     copilotEnvironment(copilotHome, request), prompt, request.timeout(),
                     effective::onProcessStart, null);
+            effective.onRawOutput(result.stdout());
             if (result.timedOut()) {
                 throw new CliTurnException("copilot turn timed out after " + request.timeout().toMinutes() + " minutes");
             }

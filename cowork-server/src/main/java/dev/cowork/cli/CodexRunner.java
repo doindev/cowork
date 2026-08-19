@@ -63,6 +63,7 @@ public class CodexRunner implements CliAgentRunner {
                         environment, request.prompt(), request.timeout(),
                         effective::onProcessStart, null);
             }
+            effective.onRawOutput(result.stdout());
             if (result.timedOut()) {
                 throw new CliTurnException("codex turn timed out after " + request.timeout().toMinutes() + " minutes");
             }

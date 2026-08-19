@@ -17,4 +17,12 @@ public interface TurnListener {
     /** The subprocess started; the handle allows cancellation. */
     default void onProcessStart(Process process) {
     }
+
+    /**
+     * Raw CLI output (a line, or a whole stream for CLIs without streaming). Lets the
+     * caller notice things the adapters do not model, e.g. a wrapped command that failed
+     * to launch.
+     */
+    default void onRawOutput(String output) {
+    }
 }

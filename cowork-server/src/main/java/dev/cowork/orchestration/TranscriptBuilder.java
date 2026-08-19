@@ -12,10 +12,15 @@ import org.springframework.stereotype.Component;
 @Component
 public class TranscriptBuilder {
 
-    private final dev.cowork.skill.SkillService skills;
+    /** Placeholder a skill body can use to receive the machine's unwrappable-tool list. */
+    private static final String RTK_UNAVAILABLE = "{{RTK_UNAVAILABLE}}";
 
-    public TranscriptBuilder(dev.cowork.skill.SkillService skills) {
+    private final dev.cowork.skill.SkillService skills;
+    private final dev.cowork.rtk.RtkToolSupport rtkTools;
+
+    public TranscriptBuilder(dev.cowork.skill.SkillService skills, dev.cowork.rtk.RtkToolSupport rtkTools) {
         this.skills = skills;
+        this.rtkTools = rtkTools;
     }
 
     public String build(Conversation conversation, Participant agent, List<Participant> allParticipants,
@@ -113,7 +118,7 @@ public class TranscriptBuilder {
             sb.append("\n[ACTIVE SKILL: ").append(skill.name()).append("]\n")
                     .append("The user activated this protocol for the conversation — follow it in ")
                     .append("addition to the standing instructions above.\n")
-                    .append(skill.body()).append('\n');
+                    .append(skill.body().replace(RTK_UNAVAILABLE, rtkTools.promptNote())).append('\n');
         }
 
         if (sessionRecovery) {
