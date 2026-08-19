@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { getTurns } from '../api'
 import type {
   ActivityEvent,
   AgentActivity,
@@ -152,6 +153,39 @@ export function useConversationEvents(conversationId: string | null): Conversati
       }
     }
 
+    /**
+     * Agent statuses arrive only as events, so a turn that started before this view
+     * opened (or while the stream was down) would leave no trace. The server knows
+     * which turns are underway, so ask it and reconcile in both directions.
+     */
+    const syncActiveTurns = () => {
+      getTurns(conversationId)
+        .then((turns) => {
+          if (disposed) return
+          const working = new Set(turns.map((t) => t.agentName))
+          setAgentStatuses((prev) => {
+            const next: Record<string, AgentActivity> = { ...prev }
+            let changed = false
+            for (const name of working) {
+              if (next[name] !== 'thinking') {
+                next[name] = 'thinking'
+                changed = true
+              }
+            }
+            for (const [name, status] of Object.entries(prev)) {
+              if (status === 'thinking' && !working.has(name)) {
+                delete next[name]
+                changed = true
+              }
+            }
+            return changed ? next : prev
+          })
+        })
+        .catch(() => {
+          /* the indicator is cosmetic — a failed probe must not break the stream */
+        })
+    }
+
     const connect = () => {
       if (disposed) return
       source = new EventSource(`/api/conversations/${conversationId}/events`)
@@ -164,6 +198,8 @@ export function useConversationEvents(conversationId: string | null): Conversati
           void queryClient.invalidateQueries({ queryKey: ['proposals', conversationId] })
           void queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] })
           void queryClient.invalidateQueries({ queryKey: ['rtk-savings', conversationId] })
+          // Status events emitted while disconnected are gone; re-derive from the server.
+          syncActiveTurns()
         }
         attempt = 0
       }
@@ -283,6 +319,8 @@ export function useConversationEvents(conversationId: string | null): Conversati
     }
 
     connect()
+    // Restore the indicator for turns already underway when this view opened.
+    syncActiveTurns()
 
     return () => {
       disposed = true

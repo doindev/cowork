@@ -178,10 +178,17 @@ public class AgentTurnService {
         }
 
         publishStatus(conversation, participant, "thinking");
+        // Register before queueing, not when the process starts: a turn waiting on the CLI
+        // semaphore is still working as far as the user is concerned, and this registry is
+        // what restores the "thinking" indicator when they re-open the conversation.
+        // onProcessStart replaces this entry with one carrying the real process handle.
+        activeTurns.register(conversation.getId(), new ActiveTurnRegistry.ActiveTurn(
+                participant.getId(), participant.getDisplayName(), null, round));
         try {
             cliSemaphore.acquire();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            activeTurns.unregister(conversation.getId(), participant.getId());
             publishStatus(conversation, participant, "idle");
             return TurnOutcome.of(TurnFailure.SKIPPED, "interrupted");
         }
