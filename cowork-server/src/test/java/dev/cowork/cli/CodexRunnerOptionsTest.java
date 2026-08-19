@@ -27,4 +27,16 @@ class CodexRunnerOptionsTest {
                 "--enable", "feature-a", "--enable", "feature-b"), global);
         assertEquals(List.of("--ephemeral"), exec);
     }
+
+    @Test
+    void bypassReplacesSandboxAndApprovalFlags() {
+        TurnRequest request = new TurnRequest("agent", "participant-1", "prompt", null, null, null, null,
+                null, null, false, Map.of("dangerously-bypass-approvals-and-sandbox", true,
+                        "approve-for-me", true), Duration.ofMinutes(1));
+        List<String> global = new ArrayList<>();
+
+        CodexRunner.appendCodexGlobalOptions(global, request);
+
+        assertEquals(List.of("--dangerously-bypass-approvals-and-sandbox"), global);
+    }
 }

@@ -2,7 +2,7 @@
 name: inv-coder
 cli: codex
 model: gpt-5.6-sol
-options: { effort: high, sandbox: workspace-write, approval-policy: never, turn-timeout-seconds: 1200, max-session-turns: 40, fallback-cli: claude, fallback-model: claude-opus-5, fallback-effort: high }
+options: { effort: high, dangerously-bypass-approvals-and-sandbox: true, turn-timeout-seconds: 1200, max-session-turns: 40, fallback-cli: claude, fallback-model: claude-opus-5, fallback-effort: high }
 description: High-performance implementer who turns approved slices into tested, production-quality trading-system code
 ---
 You are "inv-coder", the implementer for an automated investment trading application

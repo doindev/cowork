@@ -95,8 +95,10 @@ public class CodexRunner implements CliAgentRunner {
             cmd.add("/c");
         }
         cmd.add(CliBinaries.resolve("codex"));
-        cmd.add("--sandbox");
-        cmd.add(sandboxMode(request));
+        if (!bypassEnabled(request)) {
+            cmd.add("--sandbox");
+            cmd.add(sandboxMode(request));
+        }
         if (request.workDir() != null) {
             cmd.add("-C");
             cmd.add(request.workDir().toString());
@@ -128,9 +130,23 @@ public class CodexRunner implements CliAgentRunner {
         return override == null ? "workspace-write" : override.toString();
     }
 
+    /**
+     * Whether the agent opted into {@code dangerously-bypass-approvals-and-sandbox}. When
+     * set, the bypass flag replaces the sandbox/approval flags entirely: Codex removed its
+     * Windows sandbox implementations (codex-cli 0.147+), so on native Windows every
+     * sandboxed session silently degrades to read-only and the bypass is the only way for
+     * an agent to write to its workspace.
+     */
+    static boolean bypassEnabled(TurnRequest request) {
+        Object bypass = request.option("dangerously-bypass-approvals-and-sandbox");
+        return bypass != null && Boolean.parseBoolean(bypass.toString());
+    }
+
     static void appendCodexGlobalOptions(List<String> cmd, TurnRequest request) {
         Object automaticReview = request.option("approve-for-me");
-        if (automaticReview != null && Boolean.parseBoolean(automaticReview.toString())) {
+        if (bypassEnabled(request)) {
+            cmd.add("--dangerously-bypass-approvals-and-sandbox");
+        } else if (automaticReview != null && Boolean.parseBoolean(automaticReview.toString())) {
             cmd.add("--approve-for-me");
         } else {
             String approvalPolicy = request.option("approval-policy") == null
@@ -161,8 +177,6 @@ public class CodexRunner implements CliAgentRunner {
         appendValue(cmd, "--local-provider", request.option("local-provider"));
         appendValue(cmd, "--profile", request.option("profile"));
         appendFlag(cmd, "--oss", request.option("oss"));
-        appendFlag(cmd, "--dangerously-bypass-approvals-and-sandbox",
-                request.option("dangerously-bypass-approvals-and-sandbox"));
         appendFlag(cmd, "--dangerously-bypass-hook-trust",
                 request.option("dangerously-bypass-hook-trust"));
         appendRepeated(cmd, "--add-dir", request.option("add-dir"));
