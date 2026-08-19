@@ -83,7 +83,7 @@ public class CopilotRunner implements CliAgentRunner {
                     : "[YOUR PERSONA]\n" + request.persona() + "\n\n" + request.prompt();
 
             ProcessExecutor.ExecResult result = executor.run(cmd, request.workDir(),
-                    Map.of("COPILOT_HOME", copilotHome.toString()), prompt, request.timeout(),
+                    copilotEnvironment(copilotHome, request), prompt, request.timeout(),
                     effective::onProcessStart, null);
             if (result.timedOut()) {
                 throw new CliTurnException("copilot turn timed out after " + request.timeout().toMinutes() + " minutes");
@@ -153,6 +153,13 @@ public class CopilotRunner implements CliAgentRunner {
         if (value != null && Boolean.parseBoolean(value.toString())) {
             cmd.add(flag);
         }
+    }
+
+    private static Map<String, String> copilotEnvironment(Path copilotHome, TurnRequest request) {
+        Map<String, String> environment = new java.util.HashMap<>();
+        environment.put("COPILOT_HOME", copilotHome.toString());
+        environment.putAll(request.env());
+        return environment;
     }
 
     /** Builds a throwaway COPILOT_HOME: copied auth/config + generated mcp-config.json. */

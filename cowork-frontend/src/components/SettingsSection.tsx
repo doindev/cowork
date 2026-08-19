@@ -327,8 +327,11 @@ export default function SettingsSection({ conversation, alwaysOpen = false }: Pr
                         skillMutation.mutate({ name: s.name, active: e.target.checked })
                       }
                     />
-                    /{s.name}
-                    {s.phases.length > 0 && !s.overridden && (
+                    <span className={s.available ? '' : 'skill-unavailable'}>/{s.name}</span>
+                    {!s.available && (
+                      <span className="field-hint"> — needs {s.requiresBinary} (not installed)</span>
+                    )}
+                    {s.available && s.phases.length > 0 && !s.overridden && (
                       <span className="field-hint"> default in {s.phases.join('/')}</span>
                     )}
                   </label>

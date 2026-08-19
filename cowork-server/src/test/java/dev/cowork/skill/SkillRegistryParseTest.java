@@ -10,6 +10,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SkillRegistryParseTest {
@@ -63,6 +64,28 @@ class SkillRegistryParseTest {
                 """);
         SkillDef skill = SkillRegistry.parse(file).orElseThrow();
         assertEquals(Set.of(Conversation.Phase.PLANNING), skill.defaultPhases());
+    }
+
+    @Test
+    void parsesRequiresBinaryAndDefaultsToNull() throws Exception {
+        Path withRequirement = dir.resolve("rtk-skill.md");
+        Files.writeString(withRequirement, """
+                ---
+                name: rtk
+                requires-binary: rtk
+                ---
+                Wrap commands with rtk.
+                """);
+        assertEquals("rtk", SkillRegistry.parse(withRequirement).orElseThrow().requiresBinary());
+
+        Path without = dir.resolve("plain-skill.md");
+        Files.writeString(without, """
+                ---
+                name: plain
+                ---
+                Body.
+                """);
+        assertNull(SkillRegistry.parse(without).orElseThrow().requiresBinary());
     }
 
     @Test

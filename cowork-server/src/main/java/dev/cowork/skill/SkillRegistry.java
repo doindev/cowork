@@ -95,7 +95,10 @@ public class SkillRegistry {
                     }
                 }
             }
-            return Optional.of(new SkillDef(name, description, phases, body));
+            Object requires = meta.get("requires-binary");
+            String requiresBinary = requires == null || requires.toString().isBlank()
+                    ? null : requires.toString().trim();
+            return Optional.of(new SkillDef(name, description, phases, requiresBinary, body));
         } catch (IOException | RuntimeException e) {
             log.warn("Failed to parse skill file {}: {}", file, e.getMessage());
             return Optional.empty();

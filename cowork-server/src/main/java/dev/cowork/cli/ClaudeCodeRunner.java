@@ -210,7 +210,7 @@ public class ClaudeCodeRunner implements CliAgentRunner {
 
             StreamState state = new StreamState(listener == null ? TurnListener.NOOP : listener);
             TurnListener effective = listener == null ? TurnListener.NOOP : listener;
-            ProcessExecutor.ExecResult result = executor.run(cmd, request.workDir(), Map.of(),
+            ProcessExecutor.ExecResult result = executor.run(cmd, request.workDir(), request.env(),
                     request.prompt(), request.timeout(), effective::onProcessStart, state::onLine);
             if (result.timedOut()) {
                 throw new CliTurnException("claude turn timed out after " + request.timeout().toMinutes() + " minutes");

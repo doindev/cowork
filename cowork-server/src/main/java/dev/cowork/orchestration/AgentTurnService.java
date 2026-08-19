@@ -52,13 +52,18 @@ public class AgentTurnService {
     private final GitService git;
     private final ConversationRepository conversations;
     private final ActiveTurnRegistry activeTurns;
+    private final dev.cowork.skill.SkillService skills;
+    private final dev.cowork.rtk.RtkService rtk;
+    private final dev.cowork.project.WorkspaceLocator workspaces;
     private final Semaphore cliSemaphore;
 
     public AgentTurnService(CliRunnerRegistry runners, AgentDefRepository agents,
                             ParticipantRepository participants, ProjectRepository projects,
                             McpTokenService tokens, MessageService messages, SseHub sseHub,
                             CoworkProperties properties, GitService git,
-                            ConversationRepository conversations, ActiveTurnRegistry activeTurns) {
+                            ConversationRepository conversations, ActiveTurnRegistry activeTurns,
+                            dev.cowork.skill.SkillService skills, dev.cowork.rtk.RtkService rtk,
+                            dev.cowork.project.WorkspaceLocator workspaces) {
         this.runners = runners;
         this.agents = agents;
         this.participants = participants;
@@ -70,6 +75,9 @@ public class AgentTurnService {
         this.git = git;
         this.conversations = conversations;
         this.activeTurns = activeTurns;
+        this.skills = skills;
+        this.rtk = rtk;
+        this.workspaces = workspaces;
         this.cliSemaphore = new Semaphore(properties.cli().maxConcurrent());
     }
 
@@ -225,6 +233,7 @@ public class AgentTurnService {
                     token,
                     conversation.getPhase() == Conversation.Phase.IMPLEMENTATION,
                     effectiveOptions,
+                    turnEnvironment(conversation),
                     turnTimeout(options, retry));
 
             TurnListener listener = new TurnListener() {
@@ -263,6 +272,7 @@ public class AgentTurnService {
             }
             commitWorkspaceChanges(conversation, agent.getName());
             recordSpend(conversation, result.costUsd());
+            publishRtkSavings(conversation);
             if (result.text() != null && !result.text().isBlank()) {
                 return TurnOutcome.ok(messages.post(conversation.getId(), participant, result.text().trim(),
                         round, result.costUsd(), result.activity()));
@@ -288,6 +298,29 @@ public class AgentTurnService {
             log.warn("Agent '{}' turn failed: {}", agent.getName(), message);
             return TurnOutcome.of(TurnFailure.FAILED, message);
         }
+    }
+
+    /** Re-reads rtk's ledger after a turn and pushes the new totals to the UI. */
+    private void publishRtkSavings(Conversation conversation) {
+        if (!skills.isActive(conversation, "rtk")) {
+            return;
+        }
+        rtk.invalidate(conversation.getId());
+        var savings = rtk.savingsFor(conversation.getId(), workspaces.locate(conversation));
+        if (savings.available()) {
+            sseHub.publish(conversation.getId(), "rtk-savings", savings);
+        }
+    }
+
+    /**
+     * Environment overrides for this turn's subprocess. rtk's telemetry already defaults to
+     * off; the explicit opt-out makes it independent of the machine's rtk config.
+     */
+    private Map<String, String> turnEnvironment(Conversation conversation) {
+        if (!skills.isActive(conversation, "rtk")) {
+            return Map.of();
+        }
+        return Map.of("RTK_TELEMETRY_DISABLED", "1");
     }
 
     private CliAgentRunner runnerFor(dev.cowork.agent.CliType cli) {
@@ -386,18 +419,7 @@ public class AgentTurnService {
     }
 
     private Path resolveWorkDir(Conversation conversation) {
-        Path base = Path.of(properties.workspacesDir()).toAbsolutePath().normalize();
-        Path dir;
-        if (conversation.getProjectId() != null) {
-            // Any conversation with a project works in its workspace regardless of phase,
-            // so agents can read uploaded implementation_docs while still planning.
-            dir = projects.findById(conversation.getProjectId())
-                    .map(Project::getWorkspacePath)
-                    .map(Path::of)
-                    .orElse(base.resolve("_planning").resolve(conversation.getId().toString()));
-        } else {
-            dir = base.resolve("_planning").resolve(conversation.getId().toString());
-        }
+        Path dir = workspaces.locate(conversation);
         try {
             Files.createDirectories(dir);
             // The per-agent persistent-notes folder referenced by the standing instructions.

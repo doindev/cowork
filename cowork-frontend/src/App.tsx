@@ -9,6 +9,7 @@ import NewConversationModal from './components/NewConversationModal'
 import PhaseBanner from './components/PhaseBanner'
 import ChatViewer from './components/ChatViewer'
 import MessageInput from './components/MessageInput'
+import RtkChip from './components/RtkChip'
 import PanelModal from './components/PanelModal'
 import ProposalPanel from './components/ProposalPanel'
 
@@ -251,6 +252,7 @@ export default function App() {
                 {formatUsd2(spent)}
                 {budget != null && ` / ${formatUsd2(budget)}`}
               </span>
+              <RtkChip conversationId={conversation.id} />
             </div>
             <PhaseBanner
               conversation={conversation}

@@ -33,6 +33,10 @@ built frontend embedded in the server jar.
   `C:\Users\timhj\eclipse-workspace\agents` etc., siblings of the repo, NOT the repo's own
   `agents/`/`workspaces/` folders (those are the git copies). To make an agent or skill file
   change live, copy it to the sibling directory (hot-reloads in ~1s).
+- **rtk** (optional, `~/.local/bin/rtk.exe`) compresses command output to save tokens. It is
+  exposed as the `/rtk` skill (off by default, per conversation) and is never installed
+  globally — no `rtk init`, so `~/.claude` stays untouched. Savings come from rtk's own
+  ledger via `rtk gain --project --daily --format json` run in the conversation's workspace.
 - **Runtime prerequisites:** JDK 25, PostgreSQL with TimescaleDB (local `postgres-timescale`
   docker container, postgres/postgres) with a `cowork` database; Flyway migrations in
   `cowork-server/src/main/resources/db/migration` run on startup. At least one agent CLI on

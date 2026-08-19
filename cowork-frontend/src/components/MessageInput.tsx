@@ -522,7 +522,11 @@ export default function MessageInput({
                 <span className={`active-dot${skill.active ? ' on' : ''}`} />/{skill.name}
               </span>
               <span className="skill-option-hint">
-                {skill.active ? 'active — select to deactivate' : 'select to activate'}
+                {!skill.available
+                  ? `needs ${skill.requiresBinary} — not installed`
+                  : skill.active
+                    ? 'active — select to deactivate'
+                    : 'select to activate'}
               </span>
             </button>
           ))}

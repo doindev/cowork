@@ -2332,6 +2332,133 @@ textarea:disabled {
   background: rgba(240, 97, 109, 0.1);
 }
 
+.rtk-chip-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.rtk-chip {
+  font-family: Consolas, 'Cascadia Mono', monospace;
+  font-size: 12px;
+  color: var(--green);
+  background: rgba(62, 207, 142, 0.1);
+  border: 1px solid rgba(62, 207, 142, 0.35);
+  border-radius: 999px;
+  padding: 2px 10px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.rtk-chip:hover {
+  background: rgba(62, 207, 142, 0.18);
+}
+
+.rtk-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  width: 288px;
+  padding: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  text-align: left;
+  cursor: default;
+}
+
+.rtk-popover-title {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.rtk-popover-subtitle {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 10px 0 4px;
+}
+
+.rtk-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+}
+
+.rtk-stats > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.rtk-stats dt {
+  color: var(--text-muted);
+}
+
+.rtk-stats dd {
+  margin: 0;
+  font-family: Consolas, 'Cascadia Mono', monospace;
+}
+
+.rtk-stats .rtk-saved {
+  color: var(--green);
+}
+
+.rtk-days {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.rtk-day {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-family: Consolas, 'Cascadia Mono', monospace;
+  color: var(--text-muted);
+}
+
+.rtk-day-date {
+  width: 72px;
+  flex-shrink: 0;
+}
+
+.rtk-day-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--bg-base);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.rtk-day-fill {
+  display: block;
+  height: 100%;
+  background: var(--green);
+  border-radius: 999px;
+}
+
+.rtk-day-saved {
+  width: 48px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.rtk-popover-note {
+  margin-top: 10px;
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: var(--text-faint);
+}
+
+.skill-unavailable {
+  color: var(--text-faint);
+}
+
 .cost-chip {
   font-family: Consolas, 'Cascadia Mono', monospace;
   font-size: 10.5px;

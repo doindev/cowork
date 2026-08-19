@@ -20,21 +20,22 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class SkillController {
 
-    public record SkillView(String name, String description, List<String> phases) {
+    public record SkillView(String name, String description, List<String> phases, String requiresBinary) {
 
         static SkillView of(SkillDef def) {
             return new SkillView(def.name(), def.description(),
-                    def.defaultPhases().stream().map(Enum::name).sorted().toList());
+                    def.defaultPhases().stream().map(Enum::name).sorted().toList(), def.requiresBinary());
         }
     }
 
     public record ConversationSkillView(String name, String description, List<String> phases,
-                                        boolean active, boolean overridden) {
+                                        String requiresBinary, boolean active, boolean overridden,
+                                        boolean available) {
 
         static ConversationSkillView of(SkillService.EffectiveSkill effective) {
             SkillView base = SkillView.of(effective.def());
             return new ConversationSkillView(base.name(), base.description(), base.phases(),
-                    effective.active(), effective.overridden());
+                    base.requiresBinary(), effective.active(), effective.overridden(), effective.available());
         }
     }
 
@@ -73,10 +74,18 @@ public class SkillController {
                 .anyMatch(s -> s.def().name().equals(name) && s.active());
         SkillService.EffectiveSkill effective = skills.setActive(id, name, request.active());
         if (wasActive != effective.active()) {
+            String suffix;
+            if (!effective.active()) {
+                suffix = ".";
+            } else if (effective.available()) {
+                suffix = " — its protocol now applies to every agent turn.";
+            } else {
+                suffix = " — but '" + effective.def().requiresBinary()
+                        + "' is not installed, so it stays inactive until it is.";
+            }
             messages.postSystem(id, Message.Kind.SYSTEM,
                     "Skill \"" + name + "\" " + (effective.active() ? "activated" : "deactivated")
-                            + " by the user" + (effective.active()
-                            ? " — its protocol now applies to every agent turn." : "."), null);
+                            + " by the user" + suffix, null);
         }
         return ConversationSkillView.of(effective);
     }

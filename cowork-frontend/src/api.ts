@@ -357,11 +357,38 @@ export interface SkillView {
   name: string
   description: string
   phases: Phase[]
+  /** Executable that must be on PATH for the skill to apply (null = none). */
+  requiresBinary: string | null
 }
 
 export interface ConversationSkillView extends SkillView {
   active: boolean
   overridden: boolean
+  /** False when requiresBinary is not installed — the skill stays inactive. */
+  available: boolean
+}
+
+/** Token savings rtk realized in a conversation's workspace (realized, not available). */
+export interface RtkSavingsView {
+  available: boolean
+  commands: number
+  inputTokens: number
+  outputTokens: number
+  savedTokens: number
+  savingsPct: number
+  totalTimeMs: number
+  daily: {
+    date: string
+    commands: number
+    inputTokens: number
+    outputTokens: number
+    savedTokens: number
+    savingsPct: number
+  }[]
+}
+
+export function getRtkSavings(conversationId: string): Promise<RtkSavingsView> {
+  return http(`/conversations/${conversationId}/rtk-savings`)
 }
 
 export function getConversationSkills(conversationId: string): Promise<ConversationSkillView[]> {

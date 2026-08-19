@@ -18,6 +18,7 @@ import java.util.Map;
  * @param mcpToken         per-turn bearer token identifying this participant
  * @param includeChromeDevtools whether to attach the chrome-devtools MCP server
  * @param options          agent-definition options (permission mode overrides etc.)
+ * @param extraEnv         environment overrides for the subprocess (a null value unsets)
  * @param timeout          hard per-turn timeout
  */
 public record TurnRequest(
@@ -32,9 +33,23 @@ public record TurnRequest(
         String mcpToken,
         boolean includeChromeDevtools,
         Map<String, Object> options,
+        Map<String, String> extraEnv,
         Duration timeout) {
+
+    /** Convenience constructor for callers that need no environment overrides. */
+    public TurnRequest(String agentName, String sessionOwnerId, String prompt, String persona, String model,
+                       String sessionId, Path workDir, String mcpUrl, String mcpToken,
+                       boolean includeChromeDevtools, Map<String, Object> options, Duration timeout) {
+        this(agentName, sessionOwnerId, prompt, persona, model, sessionId, workDir, mcpUrl, mcpToken,
+                includeChromeDevtools, options, Map.of(), timeout);
+    }
 
     public Object option(String key) {
         return options == null ? null : options.get(key);
+    }
+
+    /** Environment overrides merged onto the inherited environment; never null. */
+    public Map<String, String> env() {
+        return extraEnv == null ? Map.of() : extraEnv;
     }
 }

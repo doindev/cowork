@@ -12,6 +12,7 @@ import type {
   PhaseInfo,
   ProposalView,
   RoundLimitEvent,
+  RtkSavingsView,
   SpendEvent,
 } from '../api'
 
@@ -162,6 +163,7 @@ export function useConversationEvents(conversationId: string | null): Conversati
           void queryClient.invalidateQueries({ queryKey: ['messages', conversationId] })
           void queryClient.invalidateQueries({ queryKey: ['proposals', conversationId] })
           void queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] })
+          void queryClient.invalidateQueries({ queryKey: ['rtk-savings', conversationId] })
         }
         attempt = 0
       }
@@ -261,6 +263,13 @@ export function useConversationEvents(conversationId: string | null): Conversati
       source.addEventListener('idle-state', (event) => {
         const state = parse<IdleStateView>(event)
         if (state) setIdleState(state.reason ? state : null)
+      })
+
+      source.addEventListener('rtk-savings', (event) => {
+        const savings = parse<RtkSavingsView>(event)
+        if (savings) {
+          queryClient.setQueryData<RtkSavingsView>(['rtk-savings', conversationId], savings)
+        }
       })
 
       source.onerror = () => {

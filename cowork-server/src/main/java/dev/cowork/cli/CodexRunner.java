@@ -52,6 +52,7 @@ public class CodexRunner implements CliAgentRunner {
             Path codexHome = prepareCodexHome(request);
             boolean resume = request.sessionId() != null && !request.sessionId().isBlank();
             Map<String, String> environment = codexEnvironment(codexHome);
+            environment.putAll(request.env());
             ProcessExecutor.ExecResult result = executor.run(buildCommand(request, resume), request.workDir(),
                     environment, request.prompt(), request.timeout(),
                     effective::onProcessStart, null);
