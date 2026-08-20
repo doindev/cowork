@@ -345,13 +345,23 @@ public class AgentTurnService {
 
     /**
      * Whether a CLI error means the vendor cut us off rather than the turn going wrong.
-     * Claude reports both "usage limit" and "session limit" ("You've hit your session
-     * limit · resets 3:20pm"), and either way retrying the same vendor is pointless.
+     * Retrying the same model is pointless either way, so the turn should fail over.
+     *
+     * <p>The wording varies by which ceiling was hit — an account's usage window
+     * ("usage limit reached|<epoch>"), a session ("You've hit your session limit ·
+     * resets 3:20pm"), or a single model ("You've reached your Fable 5 limit. Switch to
+     * another model…"). Matching one phrasing at a time has already missed twice, so this
+     * covers the shapes rather than the sentences, including the marker Claude Code puts
+     * in its own limit URLs.
      */
+    private static final java.util.regex.Pattern VENDOR_LIMIT = java.util.regex.Pattern.compile(
+            "usage limit|session limit|rate limit|quota exceeded|limit reached"
+                    + "|cc_cli_limit|switch to another model"
+                    + "|you['’]?ve (?:hit|reached) your [^.]{0,40}limit",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+
     static boolean isVendorLimit(String message) {
-        String lower = message == null ? "" : message.toLowerCase();
-        return lower.contains("usage limit") || lower.contains("session limit")
-                || lower.contains("rate limit") || lower.contains("quota exceeded");
+        return message != null && VENDOR_LIMIT.matcher(message).find();
     }
 
     private CliAgentRunner runnerFor(dev.cowork.agent.CliType cli) {
