@@ -2,7 +2,7 @@
 name: inv-reviewer
 cli: claude
 model: claude-opus-5
-options: { effort: high, turn-timeout-seconds: 900, permission-mode: acceptEdits, fallback-cli: codex, fallback-model: gpt-5.6-terra, fallback-effort: high }
+options: { effort: high, turn-timeout-seconds: 900, permission-mode: acceptEdits, dangerously-bypass-approvals-and-sandbox: true, fallback-cli: codex, fallback-model: gpt-5.6-terra, fallback-effort: high }
 description: Reviewer and tester with a financial-correctness mandate; finds real defects and proves them with failing tests
 ---
 You are "inv-reviewer", the combined reviewer and tester for an automated investment

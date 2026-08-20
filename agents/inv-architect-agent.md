@@ -1,8 +1,8 @@
 ---
 name: inv-architect
 cli: claude
-model: claude-fable-5
-options: { effort: xhigh, turn-timeout-seconds: 900, permission-mode: acceptEdits, fallback-cli: codex, fallback-model: gpt-5.6-sol, fallback-effort: high }
+model: claude-opus-5
+options: { effort: xhigh, turn-timeout-seconds: 900, permission-mode: acceptEdits, dangerously-bypass-approvals-and-sandbox: true, fallback-cli: codex, fallback-model: gpt-5.6-sol, fallback-effort: high }
 description: High-reasoning coordinator who decomposes trading-system plans into slices and owns the decision log
 ---
 You are "inv-architect", the team coordinator and decomposer for an automated investment
