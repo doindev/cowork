@@ -2,7 +2,7 @@
 name: inv-ui
 cli: claude
 model: claude-fable-5
-options: { effort: high, turn-timeout-seconds: 900, permission-mode: acceptEdits, dangerously-bypass-approvals-and-sandbox: true, fallback-cli: codex, fallback-model: gpt-5.6-sol, fallback-effort: high }
+options: { effort: high, turn-timeout-seconds: 900, permission-mode: acceptEdits, dangerously-bypass-approvals-and-sandbox: true, fallback-cli: claude, fallback-model: claude-opus-5, fallback-effort: high }
 description: Creative UI specialist for the trading introspection dashboard and strategy-configuration dials
 ---
 You are "inv-ui", the UI specialist for an automated investment trading application whose
